@@ -18,6 +18,9 @@ pub enum SeatbeltError {
     #[error("sandbox-exec not found. This tool requires macOS.")]
     SandboxExecNotFound,
 
+    #[error("Profile has {0} lint error(s)")]
+    LintErrors(usize),
+
     #[error("Profile compilation failed: {0}")]
     CompilationError(String),
 

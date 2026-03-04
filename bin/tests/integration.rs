@@ -140,6 +140,57 @@ fn help_shows_all_commands() {
         .stdout(predicate::str::contains("check"));
 }
 
+// --- check ---
+
+#[test]
+fn check_valid_profile() {
+    let profile = write_temp_profile(
+        "version: 1\nname: valid\nfilesystem:\n  write:\n    - (cwd)\nprocess:\n  allow_exec_any: true\n",
+    );
+    seatbelt()
+        .args(["check", &profile.path().to_string_lossy()])
+        .assert()
+        .success();
+}
+
+#[test]
+fn check_invalid_version() {
+    let profile = write_temp_profile("version: 99\nname: bad\n");
+    seatbelt()
+        .args(["check", &profile.path().to_string_lossy()])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("unsupported profile version"));
+}
+
+#[test]
+fn check_strict_warnings() {
+    // Profile with no exec permissions triggers a warning
+    let profile = write_temp_profile("version: 1\nname: strict-test\n");
+    seatbelt()
+        .args(["check", "--strict", &profile.path().to_string_lossy()])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("warning"));
+}
+
+#[test]
+fn run_aborts_on_lint_error() {
+    let profile = write_temp_profile("version: 99\nname: bad\nprocess:\n  allow_exec_any: true\n");
+    seatbelt()
+        .args([
+            "run",
+            "--dry-run",
+            "--profile",
+            &profile.path().to_string_lossy(),
+            "--",
+            "echo",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("lint error"));
+}
+
 // --- stub commands ---
 
 #[test]
@@ -155,15 +206,6 @@ fn generate_not_yet_implemented() {
 fn explain_not_yet_implemented() {
     seatbelt()
         .arg("explain")
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("not yet implemented"));
-}
-
-#[test]
-fn check_not_yet_implemented() {
-    seatbelt()
-        .args(["check", "some.yaml"])
         .assert()
         .failure()
         .stderr(predicate::str::contains("not yet implemented"));

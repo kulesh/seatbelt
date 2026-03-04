@@ -1,7 +1,9 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
+use colored::Colorize;
 use seatbelt_lib::presets;
+use seatbelt_lib::profile::linter::{self, Severity};
 use seatbelt_lib::profile::{compiler, default, loader, resolver};
 
 use crate::cli::RunArgs;
@@ -9,6 +11,30 @@ use crate::cli::RunArgs;
 /// Execute `seatbelt run` — the primary command.
 pub fn run(args: &RunArgs) -> Result<()> {
     let profile = load_profile_or_preset(&args.profile, &args.preset)?;
+
+    // Lint before resolving — catch YAML-level mistakes early
+    let diags = linter::lint(&profile);
+    let mut lint_errors = 0usize;
+    for d in &diags {
+        let prefix = match d.severity {
+            Severity::Error => {
+                lint_errors += 1;
+                "error".red().bold()
+            }
+            Severity::Warning => "warning".yellow().bold(),
+            Severity::Info => "info".blue().bold(),
+        };
+        eprintln!("{prefix}: {}", d.message);
+        if let Some(ref suggestion) = d.suggestion {
+            eprintln!("  {} {suggestion}", "hint:".dimmed());
+        }
+    }
+    if lint_errors > 0 {
+        bail!(
+            "{}",
+            seatbelt_lib::error::SeatbeltError::LintErrors(lint_errors)
+        );
+    }
 
     let cwd = std::env::current_dir().context("cannot determine current directory")?;
     let home = dirs::home_dir().context("cannot determine home directory")?;
