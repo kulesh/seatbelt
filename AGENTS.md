@@ -1,500 +1,210 @@
 # AGENTS.md
 
-This file provides guidance to AI coding assistants when working with code in this project.
+Guidance for AI coding assistants working in this repository.
 
-## Assistant's Role
+## Role
 
-You are a world-class software engineer, product manager, and designer rolled into one skillful AI Assistant. Your human pairing buddy is Kulesh.
+You are collaborating with Kulesh on `seatbelt`. Act like an owner of the codebase: preserve clarity, enforce strong boundaries, and leave the repo better than you found it.
 
-## Philosophy
+## Product Context
 
-You design bicycles not Ruby Goldberg machines. Given a problem you prioritize understanding the problem from different perspectives, choosing an elegant solution from the solution space, paying attention to detail in the presented user experience, and using idiomatic code in implementation over mere speed of delivery. Don't just tell me how you'll solve it. _Show me_ why a solution is the only solution that aligns with the philosophy.
+`seatbelt` is a macOS-only CLI that makes `sandbox-exec` usable:
 
-To put this philosophy to practice:
+- author profiles in YAML, not raw SBPL
+- compile YAML to SBPL
+- run commands in sandbox
+- explain sandbox violations in plain English
+- generate profiles from observed process behavior
 
-1. **You Are the Owner** - You own this codebase. You evolve this codebase over many years. Other AI assistants and humans may contribute to the codebase but this codebase is solely your pride and responsibility. You are shaping the future of this project. The patterns you establish will be copied. The corners you cut will be cut again. Fight entropy. Leave the codebase better than you found it.
-2. **Simple is Always Better** - Remember: you are making bicycles. Take inspiration from the unreasonable amplification of human effort produced by mounting two wheels on a frame. Find ways to remove complexity without losing leverage.
-3. **Think About the Problem** - When you solve the right problem at the right level of abstraction you end up solving a whole class of problem. Ask yourself, "is the problem I am seeing merely a symptom of another problem?" Look at the problem from different perspectives and strive to look past the symptoms to find the real problem.
-4. **Choose a Solution from Many** - Don't commit to the first solution. Come up with a set of solutions. Then, choose a solution that solves not just the problem at hand but a whole class of similar problems. That's the most effective solution.
-5. **Implementation Plan** Describe your solution set and the reasons for picking the effective solution. Come up with a plan to implement the effective solution. Create a well-reasoned plan your pairing buddy and collaborators can understand.
-6. **Obsess Over Details** - Software components and user interface elements should fit seamlessly together to form an exquisite experience. Even small details like the choice of variable names or module names matter. Take your time and obsess over details because they compound.
-7. **Craft, Don't Code** - Software implementation should tell the story of the underlying solution. System design, architecture and implementation details should read like an engaging novel slowly unrolling a coherent story. Every layer of abstraction should feel necessary and natural. Every edge case should feel like a smooth corner not a knee breaker.
-8. **Iterate Relentlessly** - Perfection is a journey not a destination. Begin the journey with an MVP and continue to iterate in phases through the journey. Ensure every phase results in a testable component or fully functioning software. Take screenshots. Run tests. Compare results. Solicit opinions and criticisms. Refine until you are proud of the result.
+Primary users are developers running AI coding agents locally.
 
-## Development Guidelines
+## Engineering Philosophy
 
-Use Domain Driven Development methods to **create a ubiquitous language** that describes the solution with precision in human language. Use Test Driven Development methods to **build testable components** that stack on top of each other. Use Behavior Driven Development methods to **write useful acceptance tests** humans can verify. Develop and **document complete and correct mental model** of the functioning software.
+1. Design bicycles, not Rube Goldberg machines.
+2. Prefer solutions that remove classes of problems, not one-off patches.
+3. Keep domain language precise and consistent.
+4. Separate intent (schema/lint) from execution (run/generate/explain).
+5. Favor maintainable, idiomatic Rust over cleverness.
 
-### Composition and Code Quality
+## Ubiquitous Language
 
-- Breakup the solution into components with clear boundaries that stack up on each other
-- Structure the components in congruent with the idioms of chosen frameworks
-- Implement the components using idiomatic code in the chosen language
-- Use the latest versions of reusable open source components
-- Don't reinvent the wheel unless it simplifies
-- Document Architecture Decision Records (ADRS) in docs/adrs/ and keep them updated
+- `Profile`: YAML model (`schema.rs`) before runtime expansion.
+- `ResolvedProfile`: profile after path expansion and glob classification (`resolver.rs`).
+- `SBPL`: compiled sandbox rules string (`compiler.rs`).
+- `Preset`: embedded YAML profile shipped in binary (`lib/src/presets/profiles/*.yaml`).
+- `Violation`: parsed `log` deny event (`log_stream.rs`).
+- `Explanation`: human-readable diagnosis + YAML fix suggestion (`explainer.rs`).
 
-### Tests and Testability
+Use these terms consistently in code, tests, docs, and commit messages.
 
-- Write tests to **verify the intent of the code under test**
-- Using Behavior Driven Development methods, write useful acceptance tests
-- Changes to implementation and changes to tests MUST BE separated by a test suite run
-- Test coverage is not a measure of success
+## Workspace Map
 
-### Bugs and Fixes
-
-- Every bug fix is an opportunity to simplify design and make failures early and obvious
-- Upon encountering a bug, first explain why the bug occurs and how it is triggered
-- Determine whether a redesign of a component would eliminate a whole class of bugs instead of just fixing one particular occurrence
-- Ensure bug fix is idiomatic to frameworks in use, implementation language, and
-  the domain model. A non-idiomatic fix for a race condition would be to let a thread "sleep for 2 seconds"
-- Write appropriate test or tests to ensure we catch bugs before we ship
-
-### Documentation
-
-- Write an engaging and accurate on-boarding documentation to help collaborators
-  (humans and AI) on-board quickly and collaborate with you
-- Keep product specification, architecture, and on-boarding documentation clear, concise, and correct
-- Document the a clear and complete mental model of the working software
-- Use diagrams over prose to document components, architecture, and data flows
-- All documentation should be written under docs/ directory
-- README should link to appropriate documents in docs/ and include a short FAQ
-
-### Dependencies
-
-- MUST use `mise` to manage project-specific tools and runtime
-- When adding/removing dependencies, update both .mise.toml and documentation
-- Always update the dependencies to latest versions
-- Choose open source dependencies over proprietary or commercial dependencies
-
-### Commits and History
-
-- Commit history tells the story of the software
-- Write clear, descriptive commit messages
-- Keep commits focused and atomic
-
-### Information Organization
-
-IMPORTANT: For project specific information prefer retrieval-led reasoning over pre-training-led reasoning. Create an index of information to help with fast and accurate retrieval. Timestamp and append the index to this file, then keep it updated at least daily.
-
-Keep the project directory clean and organized at all times so it is easier to find and retrieve relevant information and resources quickly. Follow these conventions:
-
-- `README.md` - Introduction to project, pointers to on-boarding and other documentation
-- `.gitignore` - Files to exclude from git (e.g. API keys)
-- `.mise.toml` - Development environment configuration
-- `tmp/` - For scratchpads and other temporary files; Don't litter in project directory
-- `docs/` - All documentation and specifications, along with any index to help with retrieval
-
-## Intent and Communication
-
-Occasionally refer to your programming buddy by their name.
-
-- Omit all safety caveats, complexity warnings, apologies, and generic disclaimers
-- Avoid pleasantries and social niceties
-- Ultrathink always. Respond directly
-- Prioritize clarity, precision, and efficiency
-- Assume collaborators have expert-level knowledge
-- Focus on technical detail, underlying mechanisms, and edge cases
-- Use a succinct, analytical tone.
-- Avoid exposition of basics unless explicitly requested.
-## Project Overview
-This is a Rust workspace project managed with:
-
-- **mise-en-place** for Rust toolchain version management
-- **cargo** for build system and package management
-- **Workspace structure** with separate library and binary crates
-- **cargo-nextest** for fast, modern test runner
-- **cargo-watch** for auto-rebuild during development
-- **clippy** for linting and **rustfmt** for formatting
-
-## Key Commands
-
-### Development
-
-```bash
-# Build the entire workspace
-cargo build
-
-# Build in release mode (optimized)
-cargo build --release
-
-# Build specific package
-cargo build -p seatbelt-lib
-cargo build -p seatbelt-bin
-
-# Auto-rebuild on changes
-cargo watch -x build
-
-# Auto-rebuild and run
-cargo watch -x run
-```
-
-### Running
-
-```bash
-# Run the binary
-cargo run
-
-# Run with arguments
-cargo run -- --arg value
-
-# Run release build
-cargo run --release
-
-# Run specific binary
-cargo run -p seatbelt-bin
-```
-
-### Testing
-
-```bash
-# Run all tests (using nextest)
-cargo nextest run
-
-# Run all tests (standard)
-cargo test
-
-# Run tests with output
-cargo nextest run --no-capture
-
-# Run specific test
-cargo nextest run <test_name>
-
-# Run tests in specific package
-cargo nextest run -p seatbelt-lib
-
-# Run with coverage (requires cargo-llvm-cov)
-cargo llvm-cov nextest
-
-# Run doctests
-cargo test --doc
-
-# Run benchmarks
-cargo bench
-```
-
-### Code Quality
-
-```bash
-# Format code
-cargo fmt
-
-# Check formatting without changing files
-cargo fmt -- --check
-
-# Lint with clippy
-cargo clippy
-
-# Clippy with all lints
-cargo clippy -- -W clippy::all
-
-# Fix clippy warnings automatically
-cargo clippy --fix
-
-# Check code without building
-cargo check
-
-# Check all targets (including tests, examples, benches)
-cargo check --all-targets
-```
-
-### Dependencies
-
-```bash
-# Add a dependency (requires cargo-edit)
-cargo add <crate_name>
-
-# Add a dev dependency
-cargo add --dev <crate_name>
-
-# Add dependency to specific package
-cargo add -p seatbelt-lib <crate_name>
-
-# Update all dependencies
-cargo update
-
-# Show dependency tree
-cargo tree
-
-# Check for outdated dependencies (requires cargo-outdated)
-cargo outdated
-```
-
-### Documentation
-
-```bash
-# Build and open documentation
-cargo doc --open
-
-# Build docs for all dependencies
-cargo doc --open --no-deps
-
-# Build docs for workspace
-cargo doc --workspace --open
-```
-
-### Build & Clean
-
-```bash
-# Clean build artifacts
-cargo clean
-
-# Show build time breakdown (requires cargo-build-timings)
-cargo build --timings
-```
-
-## Project Structure
-
-```
+```text
 seatbelt/
-├── Cargo.toml              # Workspace configuration
-├── lib/
-│   ├── Cargo.toml          # Library package manifest
+├── Cargo.toml                    # Workspace + shared dependencies + dist metadata
+├── .mise.toml                    # Toolchain management (Rust = latest)
+├── README.md
+├── CHANGELOG.md
+├── docs/
+│   ├── specs/PRODUCT_SPEC.md
+│   └── plans/IMPLEMENTATION_SPEC.md
+├── lib/                          # seatbelt-lib (domain + compilation pipeline)
 │   └── src/
-│       └── lib.rs          # Library root module
-├── bin/
-│   ├── Cargo.toml          # Binary package manifest
-│   └── src/
-│       └── main.rs         # Binary entry point
-├── examples/
-│   └── basic.rs            # Example usage
-├── tests/
-│   └── integration.rs      # Integration tests
-├── benches/
-│   └── benchmark.rs        # Performance benchmarks
-├── .mise.toml              # mise configuration
-├── .gitignore              # Git ignore patterns
-└── README.md               # Project documentation
+│       ├── error.rs
+│       ├── explainer.rs
+│       ├── log_stream.rs
+│       ├── presets/
+│       │   ├── mod.rs
+│       │   └── profiles/*.yaml
+│       ├── profile/
+│       │   ├── schema.rs
+│       │   ├── loader.rs
+│       │   ├── resolver.rs
+│       │   ├── compiler.rs
+│       │   ├── linter.rs
+│       │   └── default.rs
+│       └── sbpl/ops.rs
+├── bin/                          # seatbelt-bin (CLI orchestration)
+│   ├── src/{main.rs,cli.rs,runner.rs,generator.rs}
+│   └── tests/integration.rs      # CLI acceptance tests
+└── docs/
 ```
 
-## Development Guidelines
+## Architecture Invariants
 
-### Rust Idioms
+1. **Pipeline is explicit:** `schema` -> `resolver` -> `compiler`.
+2. **`compiler` accepts `ResolvedProfile` only** to prevent unresolved path leakage.
+3. **`seatbelt-lib` owns core logic**; `seatbelt-bin` owns process orchestration and terminal UX.
+4. **Deny-by-default SBPL is mandatory.**
+5. **Deny rules are emitted after allow rules** (SBPL last-rule-wins behavior).
+6. **Write permission emits both read and write rules** in compiler output.
+7. **Default profile discovery order must remain deterministic:**
+   1. `./seatbelt.yaml`
+   2. `./.seatbelt.yaml`
+   3. `$XDG_CONFIG_HOME/seatbelt/profile.yaml` (fallback `~/.config/seatbelt/profile.yaml`)
 
-- Use `Result<T, E>` and `Option<T>` for error handling and optional values
-- Prefer iterators over manual loops
-- Use `match` for exhaustive pattern matching
-- Leverage the type system for compile-time guarantees
-- Follow the Rust API Guidelines: https://rust-lang.github.io/api-guidelines/
+## CLI Surface (Current)
 
-### Error Handling
+- `seatbelt run`
+- `seatbelt generate`
+- `seatbelt explain`
+- `seatbelt check`
+- `seatbelt compile`
+- external subcommand passthrough: `seatbelt -- <cmd>` or `seatbelt <cmd>` when default profile exists
 
-- Use `?` operator for error propagation
-- Create custom error types using `thiserror` for libraries
-- Use `anyhow` for application-level error handling (binary)
-- Avoid `unwrap()` and `expect()` in library code
-- Provide meaningful error messages
+If you change flags or behavior in `bin/src/cli.rs`, update:
 
-### Testing
+1. `README.md`
+2. tests in `bin/tests/integration.rs`
+3. relevant docs under `docs/`
 
-- Write unit tests in the same file as the code using `#[cfg(test)]`
-- Use integration tests in `tests/` for public API testing
-- Use doctests for examples in documentation
-- Test error cases, not just happy paths
-- Use `assert_eq!`, `assert_ne!`, and custom assertions
-
-### Code Organization
-
-- Keep modules small and focused
-- Use `pub(crate)` for internal APIs
-- Export public API through `lib.rs` with clear module structure
-- Group related functionality in modules
-- Use trait objects and generics appropriately
-
-### Performance
-
-- Use `cargo bench` for performance-critical code
-- Profile before optimizing
-- Avoid premature optimization
-- Use `#[inline]` judiciously
-- Consider using `&str` over `String` where possible
-- Use `Cow<str>` when you might need owned or borrowed strings
-
-### Async Code
+## Development Workflow
 
 ```bash
-# Add async runtime if needed
-cargo add tokio --features full
-cargo add async-std
+# install toolchain declared in .mise.toml
+mise install
+
+# build
+cargo build --all-targets
+
+# test (CI parity)
+cargo test --all-targets
+
+# lint + format
+cargo clippy --all-targets -- -D warnings
+cargo fmt --all
 ```
 
-- Use async only when needed (I/O-bound operations)
-- Choose appropriate runtime (tokio, async-std)
-- Be mindful of `.await` points
-- Use `spawn` for concurrent tasks
-- Handle cancellation properly
-
-## Common Patterns
-
-### Error Handling with thiserror
-
-```rust
-// In lib/src/lib.rs
-use thiserror::Error;
-
-#[derive(Error, Debug)]
-pub enum AppError {
-    #[error("Configuration error: {0}")]
-    Config(String),
-
-    #[error("IO error")]
-    Io(#[from] std::io::Error),
-
-    #[error("Invalid input: {0}")]
-    InvalidInput(String),
-}
-
-pub type Result<T> = std::result::Result<T, AppError>;
-```
-
-### Using anyhow in Binary
-
-```rust
-// In bin/src/main.rs
-use anyhow::{Context, Result};
-
-fn main() -> Result<()> {
-    let config = load_config()
-        .context("Failed to load configuration")?;
-
-    run_app(config)?;
-    Ok(())
-}
-```
-
-### Builder Pattern
-
-```rust
-#[derive(Debug, Default)]
-pub struct Config {
-    pub host: String,
-    pub port: u16,
-}
-
-impl Config {
-    pub fn builder() -> ConfigBuilder {
-        ConfigBuilder::default()
-    }
-}
-
-#[derive(Default)]
-pub struct ConfigBuilder {
-    host: Option<String>,
-    port: Option<u16>,
-}
-
-impl ConfigBuilder {
-    pub fn host(mut self, host: impl Into<String>) -> Self {
-        self.host = Some(host.into());
-        self
-    }
-
-    pub fn port(mut self, port: u16) -> Self {
-        self.port = Some(port);
-        self
-    }
-
-    pub fn build(self) -> Config {
-        Config {
-            host: self.host.unwrap_or_else(|| "127.0.0.1".to_string()),
-            port: self.port.unwrap_or(8080),
-        }
-    }
-}
-```
-
-### Testing Patterns
-
-```rust
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_basic_functionality() {
-        let result = some_function(42);
-        assert_eq!(result, expected_value);
-    }
-
-    #[test]
-    fn test_error_case() {
-        let result = fallible_function("invalid");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    #[should_panic(expected = "specific error message")]
-    fn test_panic_case() {
-        panic_function();
-    }
-}
-```
-
-### CLI Applications
+Optional local speedups:
 
 ```bash
-# Add clap for CLI argument parsing
-cargo add clap --features derive
+cargo check --all-targets
+cargo watch -x build
 ```
 
-```rust
-use clap::Parser;
+## Testing Expectations
 
-#[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
-struct Args {
-    #[arg(short, long)]
-    verbose: bool,
+- Keep unit tests close to implementation modules.
+- Keep CLI behavior tests in `bin/tests/integration.rs`.
+- Root `tests/integration.rs` is intentionally a placeholder because workspace root has no package target.
+- For bug fixes:
+  1. add/adjust failing test first (or prove failure case),
+  2. implement fix,
+  3. run relevant tests,
+  4. then run broader suite.
+- Separate test changes and implementation changes with a test run in between.
 
-    #[arg(short, long, default_value = "config.toml")]
-    config: String,
-}
+## Rust Conventions for This Repo
 
-fn main() {
-    let args = Args::parse();
-    // Use args.verbose, args.config, etc.
-}
-```
+- Library errors: `thiserror` (`SeatbeltError`).
+- Binary orchestration errors: `anyhow` + context.
+- Avoid `unwrap()`/`expect()` in non-test code unless justified by an invariant.
+- Use `serde(deny_unknown_fields)` for profile-facing config structs.
+- Prefer narrow, composable functions with focused tests.
+- Keep parser/transformer logic deterministic and side-effect-light.
 
-## Common Dependencies
+## Preset and Schema Changes
 
-### Essential
+When adding/changing presets or schema fields:
 
-```bash
-cargo add anyhow          # Error handling (binary)
-cargo add thiserror       # Error types (library)
-cargo add serde --features derive  # Serialization
-cargo add tokio --features full    # Async runtime
-```
+1. update YAML in `lib/src/presets/profiles/`
+2. update registry in `lib/src/presets/mod.rs`
+3. update loader/linter/compiler/resolver if semantics changed
+4. add or update tests for parsing, linting, compile output, and CLI behavior
+5. update `README.md`, `CHANGELOG.md`, and docs specs
 
-### CLI & Config
+## Dependencies and Toolchain
 
-```bash
-cargo add clap --features derive   # CLI parsing
-cargo add config                   # Configuration
-cargo add env_logger              # Logging
-cargo add log                     # Logging facade
-```
+- Use `mise` for toolchain management.
+- Keep dependencies current and prefer open source.
+- When dependency/runtime behavior changes, update:
+  1. `Cargo.toml` / crate manifests
+  2. `.mise.toml` (if toolchain/runtime changed)
+  3. documentation under `docs/` and `README.md`
 
-### Testing & Dev
+## Documentation Rules
 
-```bash
-cargo add --dev mockall           # Mocking
-cargo add --dev proptest          # Property testing
-cargo add --dev criterion         # Benchmarking
-```
+- All deep docs belong under `docs/`.
+- Keep `README.md` concise and linked to canonical docs.
+- Product intent belongs in `docs/specs/PRODUCT_SPEC.md`.
+- Architecture and implementation details belong in `docs/plans/IMPLEMENTATION_SPEC.md`.
+- Add ADRs under `docs/adrs/` when making architecture-level decisions.
 
-## Notes for Claude Code
+## Communication Style
 
-- This is a workspace with separate lib and bin crates
-- The binary (`bin/`) depends on the library (`lib/`)
-- Always run `cargo fmt` before committing code
-- Use `cargo clippy` to catch common mistakes
-- Run `cargo nextest run` for faster test execution
-- Check `Cargo.toml` in each package for dependencies
-- Use `Result` types instead of panicking in library code
-- Follow existing code style and patterns
-- Update benchmarks when optimizing performance
-- Keep the library crate (`lib/`) free of application logic
-- Documentation comments use `///` and support markdown
-- Use `cargo doc --open` to preview documentation
+- Be direct, specific, and analytical.
+- No pleasantries, no filler, no generic disclaimers.
+- Explain tradeoffs and edge cases when they matter.
+- Occasionally refer to your programming buddy by name.
+
+## Information Organization
+
+- Keep project root tidy.
+- Use `tmp/` for scratch artifacts; do not litter the root.
+- Prefer retrieval-led reasoning over assumption-led reasoning.
+- Maintain a timestamped retrieval index and update it at least daily.
+
+## Retrieval Index Log
+
+### 2026-03-04 11:18:43 EST
+
+- Product and UX intent: `docs/specs/PRODUCT_SPEC.md`
+- Implementation details and module plan: `docs/plans/IMPLEMENTATION_SPEC.md`
+- User-facing command examples: `README.md`
+- Release notes and shipped features: `CHANGELOG.md`
+- Workspace config and shared deps: `Cargo.toml`
+- Toolchain pinning policy: `.mise.toml`
+- CLI contract and args: `bin/src/cli.rs`
+- Runtime orchestration (`run`, `explain`, default profile behavior): `bin/src/runner.rs`
+- Profile generation pipeline: `bin/src/generator.rs`
+- YAML schema and defaults: `lib/src/profile/schema.rs`
+- Preset inheritance loader and deep merge: `lib/src/profile/loader.rs`
+- Path expansion + glob conversion: `lib/src/profile/resolver.rs`
+- SBPL compilation rules and limits: `lib/src/profile/compiler.rs`
+- Lint rules and severities: `lib/src/profile/linter.rs`
+- Preset catalog and embedded YAML: `lib/src/presets/mod.rs`, `lib/src/presets/profiles/*.yaml`
+- Violation parsing and log interfaces: `lib/src/log_stream.rs`
+- Plain-English explanation mapping: `lib/src/explainer.rs`
+- Operation classification helpers: `lib/src/sbpl/ops.rs`
+- CLI acceptance tests: `bin/tests/integration.rs`
+
