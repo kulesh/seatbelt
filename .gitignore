@@ -11,5 +11,9 @@
 *.swo
 *~
 
+# Environment files
+.env
+.env.*
+
 # Beads task tracker (local dolt DB)
 .beads/

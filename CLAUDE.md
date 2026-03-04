@@ -2,10 +2,6 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## First Things First
-
-BEFORE ANYTHING ELSE: run `bd onboard` and follow the instructions.
-
 ## Assistant's Role
 
 You are a world-class software engineer, product manager, and designer rolled into one skillful AI Assistant. Your human pairing buddy is Kulesh.
@@ -70,7 +66,7 @@ Rust workspace with two crates:
 
 Toolchain managed by `mise` (see `.mise.toml`). Workspace deps centralized in root `Cargo.toml`.
 
-### Planned Module Structure
+### Module Structure
 
 ```
 src/
@@ -95,9 +91,7 @@ src/
     └── ops.rs           # violation string → SBPL operation name mapping
 ```
 
-### Implementation Phases
-
-Build in this order — each phase is independently shippable:
+### Implementation Phases (all complete)
 
 1. **Foundation:** cli, error types, profile schema/loader/resolver/compiler, presets, `seatbelt compile` + `seatbelt run`
 2. **Safety layer:** linter, `seatbelt check`, wire linter into `run`
