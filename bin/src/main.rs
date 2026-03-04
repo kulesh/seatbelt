@@ -9,18 +9,19 @@ use seatbelt_lib::profile::{compiler, loader, resolver};
 
 use cli::{Cli, Command};
 
-fn main() {
-    if let Err(err) = run() {
+#[tokio::main]
+async fn main() {
+    if let Err(err) = run().await {
         eprintln!("error: {err:#}");
         std::process::exit(1);
     }
 }
 
-fn run() -> Result<()> {
+async fn run() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Command::Run(args) => runner::run(&args),
+        Command::Run(args) => runner::run(&args).await,
 
         Command::Compile(args) => {
             let profile = loader::load_profile(&args.profile)?;
@@ -38,16 +39,23 @@ fn run() -> Result<()> {
             Ok(())
         }
 
-        Command::External(args) => runner::run_external(&args),
+        Command::External(args) => runner::run_external(&args).await,
 
         Command::Generate(_) => {
             eprintln!("seatbelt generate: not yet implemented (Phase 4)");
             std::process::exit(1);
         }
-        Command::Explain(_) => {
-            eprintln!("seatbelt explain: not yet implemented (Phase 3)");
-            std::process::exit(1);
+
+        Command::Explain(args) => {
+            if let Some(ref log_path) = args.log {
+                runner::explain_from_log(log_path, args.all)
+            } else if let Some(pid) = args.pid {
+                runner::explain_from_pid(pid, args.all)
+            } else {
+                runner::explain_last_run(args.all)
+            }
         }
+
         Command::Check(args) => {
             if args.sbpl {
                 eprintln!("SBPL checking not yet supported");

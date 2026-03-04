@@ -24,6 +24,9 @@ pub enum SeatbeltError {
     #[error("Profile compilation failed: {0}")]
     CompilationError(String),
 
+    #[error("Log stream error: {0}")]
+    LogStreamError(String),
+
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 }

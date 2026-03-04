@@ -191,21 +191,70 @@ fn run_aborts_on_lint_error() {
         .stderr(predicate::str::contains("lint error"));
 }
 
+// --- explain ---
+
+#[test]
+fn explain_no_last_run() {
+    // With no prior run, explain should give a helpful error (not a crash)
+    seatbelt()
+        .arg("explain")
+        .env("XDG_CACHE_HOME", "/tmp/seatbelt-test-nonexistent-cache")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("no previous run"));
+}
+
+#[test]
+fn explain_from_log_file() {
+    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/sandbox-violations.log");
+    seatbelt()
+        .args(["explain", "--log", &fixture.to_string_lossy(), "--all"])
+        .assert()
+        .success();
+}
+
+#[test]
+fn run_verbose_flag_accepted() {
+    let profile = write_temp_profile("version: 1\nname: v\nprocess:\n  allow_exec_any: true\n");
+    // --verbose with --dry-run should still work (dry-run exits before spawning)
+    seatbelt()
+        .args([
+            "run",
+            "--dry-run",
+            "--verbose",
+            "--profile",
+            &profile.path().to_string_lossy(),
+            "--",
+            "echo",
+        ])
+        .assert()
+        .success();
+}
+
+#[test]
+fn run_explain_flag_accepted() {
+    let profile = write_temp_profile("version: 1\nname: e\nprocess:\n  allow_exec_any: true\n");
+    seatbelt()
+        .args([
+            "run",
+            "--dry-run",
+            "--explain",
+            "--profile",
+            &profile.path().to_string_lossy(),
+            "--",
+            "echo",
+        ])
+        .assert()
+        .success();
+}
+
 // --- stub commands ---
 
 #[test]
 fn generate_not_yet_implemented() {
     seatbelt()
         .args(["generate", "--", "echo"])
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("not yet implemented"));
-}
-
-#[test]
-fn explain_not_yet_implemented() {
-    seatbelt()
-        .arg("explain")
         .assert()
         .failure()
         .stderr(predicate::str::contains("not yet implemented"));

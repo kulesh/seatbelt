@@ -1,0 +1,6 @@
+2024-01-15 10:30:00.123 Sandbox  pid:1234 process:(bash) deny(1) file-read-data /etc/passwd
+2024-01-15 10:30:00.234 kernel  some other kernel message
+2024-01-15 10:30:00.345 Sandbox  pid:1234 process:(bash) deny(1) file-read-data /Users/test/.ssh/id_rsa
+2024-01-15 10:30:00.456 Sandbox  pid:1234 process:(bash) deny(1) network-outbound *:443
+2024-01-15 10:30:00.567 Sandbox  pid:1234 process:(bash) deny(1) file-write-data /tmp/output.txt
+2024-01-15 10:30:00.678 Sandbox  pid:1234 process:(bash) deny(1) mach-lookup com.apple.system.logger
