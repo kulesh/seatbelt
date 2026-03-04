@@ -249,13 +249,16 @@ fn run_explain_flag_accepted() {
         .success();
 }
 
-// --- stub commands ---
+// --- generate ---
 
 #[test]
-fn generate_not_yet_implemented() {
+fn generate_help() {
     seatbelt()
-        .args(["generate", "--", "echo"])
+        .args(["generate", "--help"])
         .assert()
-        .failure()
-        .stderr(predicate::str::contains("not yet implemented"));
+        .success()
+        .stdout(predicate::str::contains("--output"))
+        .stdout(predicate::str::contains("--base-preset"))
+        .stdout(predicate::str::contains("--format"))
+        .stdout(predicate::str::contains("--runs"));
 }

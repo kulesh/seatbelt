@@ -1,4 +1,5 @@
 mod cli;
+mod generator;
 mod runner;
 
 use anyhow::{Context, Result};
@@ -41,10 +42,7 @@ async fn run() -> Result<()> {
 
         Command::External(args) => runner::run_external(&args).await,
 
-        Command::Generate(_) => {
-            eprintln!("seatbelt generate: not yet implemented (Phase 4)");
-            std::process::exit(1);
-        }
+        Command::Generate(args) => generator::generate(&args).await,
 
         Command::Explain(args) => {
             if let Some(ref log_path) = args.log {
