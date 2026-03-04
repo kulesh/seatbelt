@@ -1,0 +1,68 @@
+[workspace]
+members = ["lib", "bin"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Kulesh Shanmugasundaram"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/kulesh/seatbelt"
+description = "macOS CLI that makes sandbox-exec usable by humans"
+categories = ["command-line-utilities", "development-tools"]
+keywords = ["sandbox", "macos", "security", "sandbox-exec"]
+rust-version = "1.75"
+
+[workspace.dependencies]
+# Error handling
+thiserror = "1"
+anyhow = "1"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+
+# CLI
+clap = { version = "4", features = ["derive", "env"] }
+
+# Terminal output
+colored = "2"
+
+# Filesystem utilities
+dirs = "5"
+
+# Temp files
+tempfile = "3"
+
+# Testing
+assert_cmd = "2"
+predicates = "3"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
+
+# Config for 'dist'
+[workspace.metadata.dist]
+# The preferred dist version to use in CI
+cargo-dist-version = "0.30.2"
+# CI backends to support
+ci = "github"
+# The installers to generate for each app
+installers = ["homebrew"]
+# Target platforms to build for (macOS-only)
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"]
+# A GitHub repo to push Homebrew formulas to
+tap = "kulesh/homebrew-tap"
+# Publish jobs to run in CI
+publish-jobs = ["homebrew"]
+# Which actions to run on pull requests
+pr-run-mode = "plan"
+# Whether to install an updater program
+install-updater = false

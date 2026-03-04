@@ -1,0 +1,25 @@
+version: 1
+name: read-only
+description: >
+  Read anywhere, write nowhere. For untrusted scripts, static analysis,
+  and code review agents.
+
+filesystem:
+  read:
+    - /
+  write: []
+  deny:
+    - (home)/.ssh/id_*
+
+network:
+  outbound:
+    allow: false
+  inbound:
+    allow: false
+
+process:
+  allow_fork: true
+  allow_exec_any: true
+
+system:
+  allow_sysctl_read: true

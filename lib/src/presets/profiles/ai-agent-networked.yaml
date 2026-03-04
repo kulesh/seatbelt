@@ -1,0 +1,13 @@
+version: 1
+name: ai-agent-networked
+description: >
+  AI coding agent with outbound network access. Same filesystem
+  restrictions as ai-agent-strict.
+
+extends: ai-agent-strict
+
+network:
+  outbound:
+    allow: true
+  inbound:
+    allow: false

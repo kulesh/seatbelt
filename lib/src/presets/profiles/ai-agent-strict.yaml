@@ -1,0 +1,39 @@
+version: 1
+name: ai-agent-strict
+description: >
+  AI coding agent sandboxed to the project directory. Read access to
+  system libraries and cwd; write access to cwd and temp dirs only.
+  No network access. Unrestricted exec (agents need to run various tools).
+
+filesystem:
+  read:
+    - /usr/lib
+    - /usr/local/lib
+    - /opt/homebrew
+    - /System/Library
+    - (cwd)
+  write:
+    - (cwd)
+    - (tmpdir)
+  deny:
+    - (home)/.ssh/id_*
+    - (home)/.aws
+    - (home)/.config/gcloud
+    - (home)/.npmrc
+    - (home)/.pypirc
+
+network:
+  outbound:
+    allow: false
+  inbound:
+    allow: false
+
+process:
+  allow_fork: true
+  allow_exec_any: true
+
+system:
+  allow_sysctl_read: true
+  allow_mach_lookup:
+    - com.apple.system.logger
+    - com.apple.system.notification_center

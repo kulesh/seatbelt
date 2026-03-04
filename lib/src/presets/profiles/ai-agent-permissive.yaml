@@ -1,0 +1,32 @@
+version: 1
+name: ai-agent-permissive
+description: >
+  AI coding agent with broad read access and outbound network.
+  Can read anywhere on disk, write to project dir and temp dirs.
+
+filesystem:
+  read:
+    - /
+  write:
+    - (cwd)
+    - (tmpdir)
+  deny:
+    - (home)/.ssh/id_*
+    - (home)/.aws
+    - (home)/.config/gcloud
+
+network:
+  outbound:
+    allow: true
+  inbound:
+    allow: false
+
+process:
+  allow_fork: true
+  allow_exec_any: true
+
+system:
+  allow_sysctl_read: true
+  allow_mach_lookup:
+    - com.apple.system.logger
+    - com.apple.system.notification_center

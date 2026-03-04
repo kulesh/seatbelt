@@ -1,0 +1,15 @@
+/target/
+
+# macOS
+.DS_Store
+
+# IDEs and editors
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+*~
+
+# Beads task tracker (local dolt DB)
+.beads/

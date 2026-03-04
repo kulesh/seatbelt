@@ -1,0 +1,27 @@
+version: 1
+name: build-tool
+description: >
+  Build steps, compilers, and test runners. Read anywhere,
+  write to project dir and temp dirs. No network access.
+
+filesystem:
+  read:
+    - /
+  write:
+    - (cwd)
+    - (tmpdir)
+  deny:
+    - (home)/.ssh/id_*
+
+network:
+  outbound:
+    allow: false
+  inbound:
+    allow: false
+
+process:
+  allow_fork: true
+  allow_exec_any: true
+
+system:
+  allow_sysctl_read: true

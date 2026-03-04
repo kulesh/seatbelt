@@ -1,0 +1,17 @@
+[package]
+name = "seatbelt-lib"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Core library for seatbelt — YAML profiles to SBPL compilation"
+
+[dependencies]
+thiserror.workspace = true
+serde.workspace = true
+serde_yaml.workspace = true
+dirs.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

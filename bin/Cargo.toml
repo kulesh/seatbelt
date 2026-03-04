@@ -1,0 +1,24 @@
+[package]
+name = "seatbelt-bin"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "macOS CLI that makes sandbox-exec usable by humans"
+
+[[bin]]
+name = "seatbelt"
+path = "src/main.rs"
+
+[dependencies]
+seatbelt-lib = { path = "../lib" }
+anyhow.workspace = true
+clap.workspace = true
+colored.workspace = true
+dirs.workspace = true
+tempfile.workspace = true
+
+[dev-dependencies]
+assert_cmd.workspace = true
+predicates.workspace = true
