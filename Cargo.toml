@@ -8,6 +8,7 @@ edition = "2021"
 authors = ["Kulesh Shanmugasundaram"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/kulesh/seatbelt"
+homepage = "https://github.com/kulesh/seatbelt"
 description = "macOS CLI that makes sandbox-exec usable by humans"
 categories = ["command-line-utilities", "development-tools"]
 keywords = ["sandbox", "macos", "security", "sandbox-exec"]
