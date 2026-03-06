@@ -6,6 +6,19 @@ A macOS CLI that makes `sandbox-exec` usable by humans. Replaces raw SBPL author
 
 macOS 13 Ventura or later. Single static binary.
 
+## Installation
+
+```bash
+brew tap kulesh/tap
+brew install seatbelt
+```
+
+Or without adding the tap first:
+
+```bash
+brew install kulesh/tap/seatbelt
+```
+
 ## Quickstart
 
 ```bash
@@ -138,6 +151,17 @@ network:
 ```bash
 cargo build --release
 ```
+
+## Homebrew Release Setup (Maintainers)
+
+`cargo-dist` publishes the formula to `kulesh/homebrew-tap` from the Release workflow.
+
+Required once per repo:
+
+1. Create a GitHub fine-grained PAT with `Contents: Read and write` for `kulesh/homebrew-tap`.
+2. Add that token as a repository secret in `kulesh/seatbelt` named `HOMEBREW_TAP_TOKEN`.
+3. Push a release tag (example: `git tag v0.1.1 && git push origin v0.1.1`).
+4. Verify the workflow job `publish-homebrew-formula` succeeds and `Formula/seatbelt.rb` is committed in `kulesh/homebrew-tap`.
 
 ## License
 

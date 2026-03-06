@@ -7,6 +7,10 @@ license.workspace = true
 repository.workspace = true
 description = "macOS CLI that makes sandbox-exec usable by humans"
 
+[package.metadata.dist]
+# Publish as `kulesh/tap/seatbelt` instead of `seatbelt-bin`.
+formula = "seatbelt"
+
 [[bin]]
 name = "seatbelt"
 path = "src/main.rs"
