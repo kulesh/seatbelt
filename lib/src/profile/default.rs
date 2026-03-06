@@ -1,6 +1,9 @@
 use std::path::{Path, PathBuf};
 
+use crate::error::Result;
 use crate::error::SeatbeltError;
+
+const BOOTSTRAP_PRESET: &str = "ai-agent-networked";
 
 /// Probe the default profile locations and return the first that exists.
 pub fn find_default_profile() -> Option<PathBuf> {
@@ -9,20 +12,60 @@ pub fn find_default_profile() -> Option<PathBuf> {
     candidates.into_iter().find(|p| p.exists())
 }
 
+/// Find the first existing default profile, or bootstrap a global one.
+/// Returns `(path, created)` where `created` indicates whether a profile was written.
+pub fn find_or_bootstrap_default_profile() -> Result<(PathBuf, bool)> {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let candidates = default_profile_candidates(&cwd);
+    if let Some(path) = candidates.iter().find(|p| p.exists()) {
+        return Ok((path.clone(), false));
+    }
+
+    let global_path = candidates
+        .last()
+        .cloned()
+        .unwrap_or_else(global_default_profile_path);
+    let created = bootstrap_profile_at(&global_path)?;
+    Ok((global_path, created))
+}
+
 /// Return the ordered list of candidate paths for default profile resolution.
 pub fn default_profile_candidates(cwd: &Path) -> Vec<PathBuf> {
-    let mut candidates = vec![cwd.join("seatbelt.yaml"), cwd.join(".seatbelt.yaml")];
+    let candidates = vec![
+        cwd.join("seatbelt.yaml"),
+        cwd.join(".seatbelt.yaml"),
+        global_default_profile_path(),
+    ];
 
+    candidates
+}
+
+fn global_default_profile_path() -> PathBuf {
     let xdg_config = std::env::var("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
             dirs::home_dir()
-                .expect("cannot determine home directory")
+                .unwrap_or_else(|| PathBuf::from("/tmp"))
                 .join(".config")
         });
-    candidates.push(xdg_config.join("seatbelt/profile.yaml"));
+    xdg_config.join("seatbelt/profile.yaml")
+}
 
-    candidates
+fn bootstrap_profile_at(path: &Path) -> Result<bool> {
+    if path.exists() {
+        return Ok(false);
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, bootstrap_profile_contents())?;
+    Ok(true)
+}
+
+fn bootstrap_profile_contents() -> String {
+    format!(
+        "version: 1\nname: default\ndescription: auto-generated global default profile\nextends: {BOOTSTRAP_PRESET}\n"
+    )
 }
 
 /// Construct an actionable error message listing all paths that were checked.
@@ -40,6 +83,7 @@ pub fn no_profile_error(cwd: &Path) -> SeatbeltError {
          Options:\n  \
          seatbelt run --profile <path> -- <command>\n  \
          seatbelt run --preset ai-agent-strict -- <command>\n  \
+         seatbelt run --dry-run -- <command>  # auto-creates ~/.config/seatbelt/profile.yaml\n  \
          Create a seatbelt.yaml in the current directory"
     ))
 }
@@ -84,5 +128,20 @@ mod tests {
         // but we can verify the candidate list includes the right paths.
         let candidates = default_profile_candidates(dir.path());
         assert!(candidates.contains(&profile_path));
+    }
+
+    #[test]
+    fn bootstrap_profile_contents_extends_networked() {
+        let yaml = bootstrap_profile_contents();
+        let profile: crate::profile::schema::Profile = serde_yaml::from_str(&yaml).unwrap();
+        assert_eq!(profile.extends.as_deref(), Some("ai-agent-networked"));
+    }
+
+    #[test]
+    fn bootstrap_profile_is_idempotent() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("seatbelt/profile.yaml");
+        assert!(bootstrap_profile_at(&path).unwrap());
+        assert!(!bootstrap_profile_at(&path).unwrap());
     }
 }

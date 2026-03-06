@@ -12,6 +12,9 @@ pub enum SeatbeltError {
     #[error("Unknown preset '{0}'. Available presets: ai-agent-strict, ai-agent-networked, ai-agent-permissive, read-only, build-tool, network-only")]
     UnknownPreset(String),
 
+    #[error("Preset extends cycle detected: {0}")]
+    PresetCycle(String),
+
     #[error("{0}")]
     NoProfileFound(String),
 

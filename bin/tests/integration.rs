@@ -249,6 +249,32 @@ fn run_explain_flag_accepted() {
         .success();
 }
 
+#[test]
+fn run_without_profile_bootstraps_global_default() {
+    let temp = tempfile::tempdir().unwrap();
+    let xdg = temp.path().join("xdg");
+    let cwd = temp.path().join("cwd");
+    fs::create_dir_all(&xdg).unwrap();
+    fs::create_dir_all(&cwd).unwrap();
+
+    seatbelt()
+        .current_dir(&cwd)
+        .env("XDG_CONFIG_HOME", &xdg)
+        .args(["run", "--dry-run", "--", "echo", "hello"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("(version 1)"));
+
+    let generated = xdg.join("seatbelt/profile.yaml");
+    assert!(
+        generated.exists(),
+        "expected default profile at {:?}",
+        generated
+    );
+    let content = fs::read_to_string(generated).unwrap();
+    assert!(content.contains("extends: ai-agent-networked"));
+}
+
 // --- generate ---
 
 #[test]

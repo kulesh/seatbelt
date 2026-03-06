@@ -1,14 +1,12 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use colored::Colorize;
-use seatbelt_lib::log_stream::{self, Violation};
 use seatbelt_lib::presets;
 use seatbelt_lib::profile::loader;
 use seatbelt_lib::profile::schema::*;
 use seatbelt_lib::sbpl::ops::{classify_operation, OperationKind};
-use tokio_stream::StreamExt;
 
 use crate::cli::GenerateArgs;
 
@@ -22,6 +20,12 @@ struct Observations {
     mach_lookups: BTreeSet<String>,
 }
 
+#[derive(Debug, Clone)]
+struct ObservedEvent {
+    operation: String,
+    path: String,
+}
+
 impl Observations {
     fn merge(&mut self, other: &Observations) {
         self.file_reads.extend(other.file_reads.iter().cloned());
@@ -32,24 +36,32 @@ impl Observations {
         self.mach_lookups.extend(other.mach_lookups.iter().cloned());
     }
 
-    fn from_violations(violations: &[Violation]) -> Self {
+    fn from_events(events: &[ObservedEvent]) -> Self {
         let mut obs = Observations::default();
-        for v in violations {
-            match classify_operation(&v.operation) {
+        for event in events {
+            match classify_operation(&event.operation) {
                 OperationKind::FileRead => {
-                    obs.file_reads.insert(v.path.clone());
+                    if !event.path.is_empty() {
+                        obs.file_reads.insert(event.path.clone());
+                    }
                 }
                 OperationKind::FileWrite => {
-                    obs.file_writes.insert(v.path.clone());
+                    if !event.path.is_empty() {
+                        obs.file_writes.insert(event.path.clone());
+                    }
                 }
                 OperationKind::Network => {
                     obs.network_outbound = true;
                 }
                 OperationKind::ProcessExec => {
-                    obs.process_execs.insert(v.path.clone());
+                    if !event.path.is_empty() {
+                        obs.process_execs.insert(event.path.clone());
+                    }
                 }
                 OperationKind::MachLookup => {
-                    obs.mach_lookups.insert(v.path.clone());
+                    if !event.path.is_empty() {
+                        obs.mach_lookups.insert(event.path.clone());
+                    }
                 }
                 _ => {}
             }
@@ -58,15 +70,15 @@ impl Observations {
     }
 }
 
-/// Report-all SBPL profile that allows everything but logs denied operations.
+/// Report-all SBPL profile that allows execution while reporting key operations.
 const REPORT_ALL_SBPL: &str = "\
 (version 1)
 (allow default)
-(deny file-read* (with report) (subpath \"/\"))
-(deny file-write* (with report) (subpath \"/\"))
-(deny network-outbound (with report))
-(deny process-exec (with report))
-(deny mach-lookup (with report))
+(allow file-read* (with report))
+(allow file-write* (with report))
+(allow network-outbound (with report))
+(allow process-exec (with report))
+(allow mach-lookup (with report))
 ";
 
 /// Entry point for `seatbelt generate`.
@@ -97,7 +109,7 @@ pub async fn generate(args: &GenerateArgs) -> Result<()> {
     Ok(())
 }
 
-/// Run the command under a report-all sandbox, collecting violations.
+/// Run the command under a report-all sandbox, collecting reported operations.
 /// Multiple runs are unioned to capture non-deterministic access patterns.
 async fn observe_process(command: &[String], runs: u32) -> Result<Observations> {
     let sandbox_exec = Path::new("/usr/bin/sandbox-exec");
@@ -130,35 +142,21 @@ async fn observe_process(command: &[String], runs: u32) -> Result<Observations> 
             .context("failed to spawn sandbox-exec")?;
 
         let pid = child.id().unwrap_or(0);
+        if pid == 0 {
+            bail!("failed to determine observed process PID");
+        }
+        let status = child
+            .wait()
+            .await
+            .context("failed to wait on sandbox-exec")?;
+        let run_events = query_reported_events(pid, &start_time)?;
 
-        // Stream violations in real time
-        let mut stream = log_stream::stream_violations(pid);
-        let mut run_violations = Vec::new();
-
-        let mut child_handle = tokio::spawn(async move { child.wait().await });
-
-        loop {
-            tokio::select! {
-                Some(v) = stream.next() => {
-                    run_violations.push(v);
-                }
-                result = &mut child_handle => {
-                    let _ = result.context("child task panicked")?
-                        .context("failed to wait on sandbox-exec")?;
-
-                    // Also query the log for any violations we missed
-                    if let Ok(post_violations) = log_stream::query_violations(pid, &start_time) {
-                        for v in post_violations {
-                            run_violations.push(v);
-                        }
-                    }
-
-                    break;
-                }
-            }
+        // sandbox-exec exits 65 on profile parse/compile errors.
+        if run_events.is_empty() && status.code() == Some(65) {
+            bail!("report-all observation profile failed to compile");
         }
 
-        let obs = Observations::from_violations(&run_violations);
+        let obs = Observations::from_events(&run_events);
         eprintln!(
             "  observed: {} reads, {} writes, {} execs, {} mach lookups{}",
             obs.file_reads.len(),
@@ -175,6 +173,92 @@ async fn observe_process(command: &[String], runs: u32) -> Result<Observations> 
     }
 
     Ok(combined)
+}
+
+fn query_reported_events(pid: u32, start_time: &str) -> Result<Vec<ObservedEvent>> {
+    let predicate = "eventMessage CONTAINS \"Sandbox\"";
+    let output = std::process::Command::new("log")
+        .args([
+            "show",
+            "--predicate",
+            predicate,
+            "--start",
+            start_time,
+            "--style",
+            "compact",
+        ])
+        .output()
+        .context("failed to run `log show` for observation mode")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!(
+            "`log show` failed for observation mode (status {}): {}",
+            output.status,
+            stderr.trim()
+        );
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(stdout
+        .lines()
+        .filter_map(parse_reported_event_line)
+        .filter_map(|(event_pid, event)| (event_pid == pid).then_some(event))
+        .collect())
+}
+
+fn parse_reported_event_line(line: &str) -> Option<(u32, ObservedEvent)> {
+    if !line.contains("Sandbox") || line.contains("duplicate report for Sandbox") {
+        return None;
+    }
+
+    let event_pid = extract_event_pid(line)?;
+
+    let details = if let Some(pos) = line.find(" allow ") {
+        &line[pos + " allow ".len()..]
+    } else if let Some(pos) = line.find("deny(") {
+        let deny_tail = &line[pos..];
+        let after_paren = deny_tail.find(") ")?;
+        &deny_tail[after_paren + 2..]
+    } else {
+        return None;
+    };
+
+    let (operation, path) = match details.find(' ') {
+        Some(pos) => (details[..pos].trim(), details[pos + 1..].trim()),
+        None => (details.trim(), ""),
+    };
+    if operation.is_empty() {
+        return None;
+    }
+
+    Some((
+        event_pid,
+        ObservedEvent {
+            operation: operation.to_string(),
+            path: path.to_string(),
+        },
+    ))
+}
+
+fn extract_event_pid(line: &str) -> Option<u32> {
+    if let Some(pos) = line.find("pid:") {
+        let after = &line[pos + 4..];
+        let pid: String = after.chars().take_while(|c| c.is_ascii_digit()).collect();
+        return pid.parse().ok();
+    }
+
+    if let Some(pos) = line.find("Sandbox: ") {
+        let after = &line[pos + "Sandbox: ".len()..];
+        if let Some(open) = after.find('(') {
+            let tail = &after[open + 1..];
+            if let Some(close) = tail.find(')') {
+                return tail[..close].parse().ok();
+            }
+        }
+    }
+
+    None
 }
 
 /// Build a Profile from observations, optionally subtracting a base preset's coverage.
@@ -377,6 +461,20 @@ fn is_blocklisted(path: &str) -> bool {
 
 /// Format current time as ISO 8601 for `log show --start`.
 fn format_iso8601_now() -> String {
+    // `log show --start` expects local wall-clock time in this format.
+    if let Ok(output) = std::process::Command::new("date")
+        .args(["+%Y-%m-%d %H:%M:%S"])
+        .output()
+    {
+        if output.status.success() {
+            let local = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !local.is_empty() {
+                return local;
+            }
+        }
+    }
+
+    // Fallback: UTC conversion without external command.
     use std::time::SystemTime;
     let dur = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
@@ -416,6 +514,72 @@ mod tests {
 
     fn test_home() -> PathBuf {
         PathBuf::from("/Users/test")
+    }
+
+    #[test]
+    fn parse_reported_allow_line() {
+        let line = "2026-03-05 21:22:39.028 Df kernel[0:1fa1fd2] (Sandbox) Sandbox: cat(62534) allow file-read-data /private/etc/hosts";
+        let (pid, event) = parse_reported_event_line(line).expect("expected allow event");
+        assert_eq!(pid, 62534);
+        assert_eq!(event.operation, "file-read-data");
+        assert_eq!(event.path, "/private/etc/hosts");
+    }
+
+    #[test]
+    fn parse_reported_deny_line() {
+        let line = "2024-01-15 10:30:00.123 Sandbox  pid:1234 process:(bash) deny(1) file-read-data /etc/passwd";
+        let (pid, event) = parse_reported_event_line(line).expect("expected deny event");
+        assert_eq!(pid, 1234);
+        assert_eq!(event.operation, "file-read-data");
+        assert_eq!(event.path, "/etc/passwd");
+    }
+
+    #[test]
+    fn ignore_duplicate_report_line() {
+        let line = "2026-03-05 21:22:39.028 Df kernel[0:1fa1fd2] (Sandbox) 1 duplicate report for Sandbox: cat(62534) allow file-read-data /bin/cat";
+        assert!(parse_reported_event_line(line).is_none());
+    }
+
+    #[test]
+    fn extract_event_pid_from_modern_line() {
+        let line = "2026-03-05 21:22:39.028 Df kernel[0:1fa1fd2] (Sandbox) Sandbox: cat(62534) allow file-read-data /private/etc/hosts";
+        assert_eq!(extract_event_pid(line), Some(62534));
+    }
+
+    #[test]
+    fn extract_event_pid_from_legacy_line() {
+        let line = "2024-01-15 10:30:00.123 Sandbox  pid:1234 process:(bash) deny(1) file-read-data /etc/passwd";
+        assert_eq!(extract_event_pid(line), Some(1234));
+    }
+
+    #[test]
+    fn extract_event_pid_missing_returns_none() {
+        assert_eq!(
+            extract_event_pid("Sandbox: cat(x) allow file-read-data"),
+            None
+        );
+    }
+
+    #[test]
+    fn observations_from_events_filters_empty_paths() {
+        let events = vec![
+            ObservedEvent {
+                operation: "file-read-data".into(),
+                path: "/etc/hosts".into(),
+            },
+            ObservedEvent {
+                operation: "process-exec".into(),
+                path: String::new(),
+            },
+            ObservedEvent {
+                operation: "network-outbound".into(),
+                path: "*:443".into(),
+            },
+        ];
+        let obs = Observations::from_events(&events);
+        assert!(obs.file_reads.contains("/etc/hosts"));
+        assert!(obs.process_execs.is_empty());
+        assert!(obs.network_outbound);
     }
 
     #[test]

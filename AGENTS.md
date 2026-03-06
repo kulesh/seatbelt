@@ -208,3 +208,11 @@ When adding/changing presets or schema fields:
 - Operation classification helpers: `lib/src/sbpl/ops.rs`
 - CLI acceptance tests: `bin/tests/integration.rs`
 
+### 2026-03-05 22:41:00 EST
+
+- SBPL literal/regex emission safety: `lib/src/profile/compiler.rs`
+- Modern sandbox log parsing + PID filtering: `lib/src/log_stream.rs`
+- Default profile bootstrap + discovery behavior: `lib/src/profile/default.rs`, `bin/src/runner.rs`
+- Observation-mode event collection and parsing: `bin/src/generator.rs`
+- Acceptance coverage for bootstrap behavior: `bin/tests/integration.rs`
+- User-facing command/docs alignment: `README.md`, `docs/specs/PRODUCT_SPEC.md`, `CHANGELOG.md`

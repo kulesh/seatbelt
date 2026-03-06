@@ -61,14 +61,15 @@ pub fn parse_violation_line(line: &str) -> Option<Violation> {
 
 /// Query the macOS system log for past violations by PID.
 ///
-/// Runs: `log show --predicate 'sender == "Sandbox" AND processID == {pid}' --start {start_time} --style compact`
+/// Runs: `log show --predicate 'eventMessage CONTAINS "Sandbox"' --start {start_time} --style compact`
+/// and then filters parsed violations by the target PID.
 pub fn query_violations(pid: u32, start_time: &str) -> Result<Vec<Violation>> {
-    let predicate = format!("sender == \"Sandbox\" AND processID == {}", pid);
+    let predicate = "eventMessage CONTAINS \"Sandbox\"";
     let output = std::process::Command::new("log")
         .args([
             "show",
             "--predicate",
-            &predicate,
+            predicate,
             "--start",
             start_time,
             "--style",
@@ -78,7 +79,11 @@ pub fn query_violations(pid: u32, start_time: &str) -> Result<Vec<Violation>> {
         .map_err(|e| SeatbeltError::LogStreamError(format!("failed to run `log show`: {e}")))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let violations = stdout.lines().filter_map(parse_violation_line).collect();
+    let violations = stdout
+        .lines()
+        .filter_map(parse_violation_line)
+        .filter(|v| v.pid == pid)
+        .collect();
 
     Ok(violations)
 }
@@ -91,10 +96,10 @@ pub fn stream_violations(
     use tokio_stream::wrappers::LinesStream;
     use tokio_stream::StreamExt;
 
-    let predicate = format!("sender == \"Sandbox\" AND processID == {}", pid);
+    let predicate = "eventMessage CONTAINS \"Sandbox\"";
 
     let child = tokio::process::Command::new("log")
-        .args(["stream", "--predicate", &predicate, "--style", "compact"])
+        .args(["stream", "--predicate", predicate, "--style", "compact"])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
         .kill_on_drop(true)
@@ -106,10 +111,11 @@ pub fn stream_violations(
             let reader = BufReader::new(stdout);
             let lines = LinesStream::new(reader.lines());
             Box::pin(lines.filter_map(
-                |line_result: std::result::Result<String, std::io::Error>| {
+                move |line_result: std::result::Result<String, std::io::Error>| {
                     line_result
                         .ok()
                         .and_then(|line| parse_violation_line(&line))
+                        .filter(|v| v.pid == pid)
                 },
             ))
         }
@@ -124,6 +130,18 @@ fn extract_pid(line: &str) -> Option<u32> {
         let num_str: String = after.chars().take_while(|c| c.is_ascii_digit()).collect();
         if let Ok(pid) = num_str.parse() {
             return Some(pid);
+        }
+    }
+    // Try "Sandbox: procname(PID)" format used in modern compact output
+    if let Some(pos) = line.find("Sandbox: ") {
+        let after = &line[pos + 9..];
+        if let Some(open) = after.find('(') {
+            let tail = &after[open + 1..];
+            if let Some(close) = tail.find(')') {
+                if let Ok(pid) = tail[..close].parse() {
+                    return Some(pid);
+                }
+            }
         }
     }
     // Try "processID == NNN" or "[NNN]" format
@@ -162,6 +180,16 @@ fn extract_process_name(line: &str) -> Option<String> {
             return Some(name);
         }
     }
+    // Try "Sandbox: name(PID)" format used in modern compact output.
+    if let Some(pos) = line.find("Sandbox: ") {
+        let after = &line[pos + 9..];
+        if let Some(open) = after.find('(') {
+            let name = after[..open].trim();
+            if !name.is_empty() {
+                return Some(name.to_string());
+            }
+        }
+    }
     None
 }
 
@@ -188,6 +216,16 @@ mod tests {
     }
 
     #[test]
+    fn parse_modern_compact_deny_line() {
+        let line = "2026-03-05 21:26:41.625 E  kernel[0:1fa47b2] (Sandbox) Sandbox: cat(63674) deny(1) file-read-data /private/etc/hosts";
+        let v = parse_violation_line(line).unwrap();
+        assert_eq!(v.pid, 63674);
+        assert_eq!(v.process_name, "cat");
+        assert_eq!(v.operation, "file-read-data");
+        assert_eq!(v.path, "/private/etc/hosts");
+    }
+
+    #[test]
     fn parse_no_path() {
         let line = "2024-01-15 10:30:00.123 Sandbox  pid:99 process:(test) deny(1) sysctl-write";
         let v = parse_violation_line(line).unwrap();
@@ -210,6 +248,10 @@ mod tests {
     #[test]
     fn extract_pid_formats() {
         assert_eq!(extract_pid("pid:1234 foo"), Some(1234));
+        assert_eq!(
+            extract_pid("Sandbox: cat(63674) allow file-read-data"),
+            Some(63674)
+        );
         assert_eq!(extract_pid("processID == 5678 bar"), Some(5678));
         assert_eq!(extract_pid("foo [42] bar"), Some(42));
         assert_eq!(extract_pid("no pid here"), None);
@@ -220,6 +262,10 @@ mod tests {
         assert_eq!(
             extract_process_name("process:(bash) foo"),
             Some("bash".into())
+        );
+        assert_eq!(
+            extract_process_name("Sandbox: cat(63674) deny(1) file-read-data /etc/hosts"),
+            Some("cat".into())
         );
         assert_eq!(
             extract_process_name("process:curl foo"),

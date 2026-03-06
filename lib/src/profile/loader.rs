@@ -16,18 +16,42 @@ pub fn load_profile(path: &Path) -> Result<Profile> {
 /// Load a profile from a YAML string, resolving `extends` if present.
 pub fn load_profile_from_str(yaml: &str) -> Result<Profile> {
     let child_value: Value = serde_yaml::from_str(yaml)?;
-
-    let merged = if let Some(Value::String(preset_name)) = child_value.get("extends") {
-        let parent_yaml = presets::get_preset(preset_name)
-            .ok_or_else(|| SeatbeltError::UnknownPreset(preset_name.clone()))?;
-        let parent_value: Value = serde_yaml::from_str(parent_yaml)?;
-        deep_merge_yaml(parent_value, child_value)
-    } else {
-        child_value
-    };
+    let merged = resolve_extends(child_value, &mut Vec::new())?;
 
     let profile: Profile = serde_yaml::from_value(merged)?;
     Ok(profile)
+}
+
+/// Resolve preset inheritance transitively, with cycle detection.
+fn resolve_extends(value: Value, stack: &mut Vec<String>) -> Result<Value> {
+    resolve_extends_with(value, stack, &presets::get_preset)
+}
+
+fn resolve_extends_with<F>(value: Value, stack: &mut Vec<String>, get_preset: &F) -> Result<Value>
+where
+    F: Fn(&str) -> Option<&'static str>,
+{
+    let Some(Value::String(preset_name)) = value.get("extends") else {
+        return Ok(value);
+    };
+
+    if stack.iter().any(|name| name == preset_name) {
+        let mut chain = stack.clone();
+        chain.push(preset_name.clone());
+        return Err(SeatbeltError::PresetCycle(chain.join(" -> ")));
+    }
+
+    stack.push(preset_name.clone());
+    let parent_resolved = (|| -> Result<Value> {
+        let parent_yaml = get_preset(preset_name)
+            .ok_or_else(|| SeatbeltError::UnknownPreset(preset_name.clone()))?;
+        let parent_value: Value = serde_yaml::from_str(parent_yaml)?;
+        resolve_extends_with(parent_value, stack, get_preset)
+    })();
+    stack.pop();
+
+    let parent_resolved = parent_resolved?;
+    Ok(deep_merge_yaml(parent_resolved, value))
 }
 
 /// Deep merge two YAML Values. Child values override parent at leaf level.
@@ -77,6 +101,19 @@ network:
     }
 
     #[test]
+    fn extends_resolves_transitively() {
+        let yaml = r#"
+version: 1
+extends: ai-agent-networked
+"#;
+        let profile = load_profile_from_str(yaml).unwrap();
+        // ai-agent-networked extends ai-agent-strict, so strict filesystem should be present.
+        assert!(profile.filesystem.read.contains(&"(cwd)".to_string()));
+        assert!(profile.filesystem.read.contains(&"/usr/lib".to_string()));
+        assert!(profile.network.outbound.allow);
+    }
+
+    #[test]
     fn extends_child_list_replaces_parent_list() {
         let yaml = r#"
 version: 1
@@ -121,6 +158,26 @@ process:
         let yaml = "version: 1\nextends: nonexistent\n";
         let err = load_profile_from_str(yaml).unwrap_err();
         assert!(matches!(err, SeatbeltError::UnknownPreset(_)));
+    }
+
+    #[test]
+    fn extends_cycle_detected() {
+        const A: &str = "version: 1\nextends: b\n";
+        const B: &str = "version: 1\nextends: a\n";
+        let lookup = |name: &str| -> Option<&'static str> {
+            match name {
+                "a" => Some(A),
+                "b" => Some(B),
+                _ => None,
+            }
+        };
+
+        let child: Value = serde_yaml::from_str("version: 1\nextends: a\n").unwrap();
+        let err = resolve_extends_with(child, &mut Vec::new(), &lookup).unwrap_err();
+        match err {
+            SeatbeltError::PresetCycle(chain) => assert!(chain.contains("a -> b -> a")),
+            other => panic!("expected PresetCycle, got {other:?}"),
+        }
     }
 
     #[test]

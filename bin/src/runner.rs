@@ -150,10 +150,14 @@ pub async fn run(args: &RunArgs) -> Result<()> {
 
 /// Execute `seatbelt <external>` — find default profile, then run.
 pub async fn run_external(args: &[String]) -> Result<()> {
-    let profile_path = default::find_default_profile().ok_or_else(|| {
-        let cwd = std::env::current_dir().unwrap_or_default();
-        default::no_profile_error(&cwd)
-    })?;
+    let (profile_path, created) = default::find_or_bootstrap_default_profile()?;
+    if created {
+        eprintln!(
+            "{} created default profile at {} (preset: ai-agent-networked)",
+            "✓".green(),
+            profile_path.display()
+        );
+    }
 
     let run_args = RunArgs {
         profile: Some(profile_path),
@@ -246,10 +250,14 @@ fn load_profile_or_preset(
             .ok_or_else(|| seatbelt_lib::error::SeatbeltError::UnknownPreset(name.clone()))?;
         Ok(loader::load_profile_from_str(yaml)?)
     } else {
-        let path = default::find_default_profile().ok_or_else(|| {
-            let cwd = std::env::current_dir().unwrap_or_default();
-            default::no_profile_error(&cwd)
-        })?;
+        let (path, created) = default::find_or_bootstrap_default_profile()?;
+        if created {
+            eprintln!(
+                "{} created default profile at {} (preset: ai-agent-networked)",
+                "✓".green(),
+                path.display()
+            );
+        }
         Ok(loader::load_profile(&path)?)
     }
 }
@@ -277,7 +285,34 @@ fn format_iso8601(time: SystemTime) -> String {
     let dur = time
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap_or_default();
-    let secs = dur.as_secs();
+    let secs = dur.as_secs().to_string();
+
+    // `log show --start` expects local wall-clock time.
+    // Try BSD date (macOS): date -r <epoch>, then GNU date fallback: date -d @<epoch>.
+    if let Ok(output) = std::process::Command::new("date")
+        .args(["-r", &secs, "+%Y-%m-%d %H:%M:%S"])
+        .output()
+    {
+        if output.status.success() {
+            let local = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !local.is_empty() {
+                return local;
+            }
+        }
+    }
+    if let Ok(output) = std::process::Command::new("date")
+        .args(["-d", &format!("@{secs}"), "+%Y-%m-%d %H:%M:%S"])
+        .output()
+    {
+        if output.status.success() {
+            let local = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !local.is_empty() {
+                return local;
+            }
+        }
+    }
+
+    let secs: u64 = secs.parse().unwrap_or_default();
 
     // Manual UTC breakdown — no chrono dependency
     let days = secs / 86400;
@@ -375,6 +410,36 @@ pub fn explain_last_run(show_all: bool) -> Result<()> {
 mod tests {
     use super::*;
 
+    fn expected_date_format_for_epoch(epoch: u64) -> Option<String> {
+        let epoch_str = epoch.to_string();
+
+        if let Ok(output) = std::process::Command::new("date")
+            .args(["-r", &epoch_str, "+%Y-%m-%d %H:%M:%S"])
+            .output()
+        {
+            if output.status.success() {
+                let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !s.is_empty() {
+                    return Some(s);
+                }
+            }
+        }
+
+        if let Ok(output) = std::process::Command::new("date")
+            .args(["-d", &format!("@{epoch_str}"), "+%Y-%m-%d %H:%M:%S"])
+            .output()
+        {
+            if output.status.success() {
+                let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !s.is_empty() {
+                    return Some(s);
+                }
+            }
+        }
+
+        None
+    }
+
     #[test]
     fn resolve_absolute_path() {
         assert_eq!(
@@ -399,15 +464,24 @@ mod tests {
     #[test]
     fn format_iso8601_epoch() {
         let s = format_iso8601(SystemTime::UNIX_EPOCH);
-        assert_eq!(s, "1970-01-01 00:00:00");
+        if let Some(expected) = expected_date_format_for_epoch(0) {
+            assert_eq!(s, expected);
+        } else {
+            assert_eq!(s, "1970-01-01 00:00:00");
+        }
     }
 
     #[test]
     fn format_iso8601_known_date() {
         // 2024-01-15 12:00:00 UTC = 1705320000 seconds since epoch
-        let time = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1705320000);
+        let epoch = 1705320000;
+        let time = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(epoch);
         let s = format_iso8601(time);
-        assert_eq!(s, "2024-01-15 12:00:00");
+        if let Some(expected) = expected_date_format_for_epoch(epoch) {
+            assert_eq!(s, expected);
+        } else {
+            assert_eq!(s, "2024-01-15 12:00:00");
+        }
     }
 
     #[test]

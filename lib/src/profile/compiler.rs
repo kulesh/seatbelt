@@ -50,7 +50,10 @@ pub fn compile(profile: &ResolvedProfile, command_binary: Option<&str>) -> Resul
 
     // Process: auto exec-allow for the sandboxed command
     if let Some(binary) = command_binary {
-        rules.push(format!("(allow process-exec (literal \"{binary}\"))"));
+        rules.push(format!(
+            "(allow process-exec (literal {}))",
+            sbpl_string(binary)
+        ));
     }
 
     // Process: exec rules from profile
@@ -72,7 +75,10 @@ pub fn compile(profile: &ResolvedProfile, command_binary: Option<&str>) -> Resul
 
     // System: mach-lookup
     for service in &profile.system.allow_mach_lookup {
-        rules.push(format!("(allow mach-lookup (global-name \"{service}\"))"));
+        rules.push(format!(
+            "(allow mach-lookup (global-name {}))",
+            sbpl_string(service)
+        ));
     }
 
     let sbpl = rules.join("\n");
@@ -95,13 +101,35 @@ pub fn compile(profile: &ResolvedProfile, command_binary: Option<&str>) -> Resul
     Ok(sbpl)
 }
 
+/// Escape a value for use inside an SBPL string literal.
+fn sbpl_string(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len() + 8);
+    for ch in value.chars() {
+        match ch {
+            '\\' => escaped.push_str("\\\\"),
+            '"' => escaped.push_str("\\\""),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            _ => escaped.push(ch),
+        }
+    }
+    format!("\"{escaped}\"")
+}
+
 /// Dispatch: glob -> regex matcher, literal -> subpath matcher.
 fn emit_path_rule(rules: &mut Vec<String>, action: &str, operation: &str, rp: &ResolvedPath) {
     if rp.is_glob {
         let regex = glob_to_regex(&rp.path);
-        rules.push(format!("({action} {operation} (regex #\"{regex}\"#))"));
+        rules.push(format!(
+            "({action} {operation} (regex {}))",
+            sbpl_string(&regex)
+        ));
     } else {
-        rules.push(format!("({action} {operation} (subpath \"{}\"))", rp.path));
+        rules.push(format!(
+            "({action} {operation} (subpath {}))",
+            sbpl_string(&rp.path)
+        ));
     }
 }
 
@@ -109,9 +137,15 @@ fn emit_path_rule(rules: &mut Vec<String>, action: &str, operation: &str, rp: &R
 fn emit_exec_rule(rules: &mut Vec<String>, path: &str) {
     if path.contains('*') || path.contains('?') {
         let regex = glob_to_regex(path);
-        rules.push(format!("(allow process-exec (regex #\"{regex}\"#))"));
+        rules.push(format!(
+            "(allow process-exec (regex {}))",
+            sbpl_string(&regex)
+        ));
     } else {
-        rules.push(format!("(allow process-exec (literal \"{path}\"))"));
+        rules.push(format!(
+            "(allow process-exec (literal {}))",
+            sbpl_string(path)
+        ));
     }
 }
 
@@ -188,11 +222,15 @@ mod tests {
             is_glob: true,
         });
         let sbpl = compile(&p, None).unwrap();
-        let expected_read = "(deny file-read* (regex #\"^/Users/test/\\.ssh/id_[^/]*$\"#))";
-        let expected_write = "(deny file-write* (regex #\"^/Users/test/\\.ssh/id_[^/]*$\"#))";
-        assert!(sbpl.contains(expected_read), "missing deny file-read regex");
+        let expected_regex = sbpl_string(r"^/Users/test/\.ssh/id_[^/]*$");
+        let expected_read = format!("(deny file-read* (regex {expected_regex}))");
+        let expected_write = format!("(deny file-write* (regex {expected_regex}))");
         assert!(
-            sbpl.contains(expected_write),
+            sbpl.contains(&expected_read),
+            "missing deny file-read regex"
+        );
+        assert!(
+            sbpl.contains(&expected_write),
             "missing deny file-write regex"
         );
     }
@@ -236,8 +274,11 @@ mod tests {
         let mut p = minimal_resolved();
         p.process.allow_exec = vec!["/opt/homebrew/bin/python3.*".into()];
         let sbpl = compile(&p, None).unwrap();
-        let expected = "(allow process-exec (regex #\"^/opt/homebrew/bin/python3\\.[^/]*$\"#))";
-        assert!(sbpl.contains(expected), "missing exec glob regex");
+        let expected = format!(
+            "(allow process-exec (regex {}))",
+            sbpl_string(r"^/opt/homebrew/bin/python3\.[^/]*$")
+        );
+        assert!(sbpl.contains(&expected), "missing exec glob regex");
     }
 
     #[test]
@@ -329,5 +370,40 @@ mod tests {
     fn symlink_prevention() {
         let sbpl = compile(&minimal_resolved(), None).unwrap();
         assert!(sbpl.contains("(deny file-write-create (vnode-type SYMLINK))"));
+    }
+
+    #[test]
+    fn escapes_literal_path_for_subpath_rule() {
+        let mut p = minimal_resolved();
+        p.filesystem_read.push(ResolvedPath {
+            path: r#"/tmp/quote"and\slash"#.into(),
+            is_glob: false,
+        });
+        let sbpl = compile(&p, None).unwrap();
+        let expected = format!(
+            "(allow file-read* (subpath {}))",
+            sbpl_string(r#"/tmp/quote"and\slash"#)
+        );
+        assert!(sbpl.contains(&expected), "missing escaped subpath literal");
+    }
+
+    #[test]
+    fn escapes_command_binary_literal() {
+        let binary = r#"/tmp/my "bin"\exec"#;
+        let sbpl = compile(&minimal_resolved(), Some(binary)).unwrap();
+        let expected = format!("(allow process-exec (literal {}))", sbpl_string(binary));
+        assert!(sbpl.contains(&expected), "missing escaped command binary");
+    }
+
+    #[test]
+    fn escapes_mach_lookup_name() {
+        let mut p = minimal_resolved();
+        p.system.allow_mach_lookup = vec![r#"com.example."svc"\name"#.into()];
+        let sbpl = compile(&p, None).unwrap();
+        let expected = format!(
+            "(allow mach-lookup (global-name {}))",
+            sbpl_string(r#"com.example."svc"\name"#)
+        );
+        assert!(sbpl.contains(&expected), "missing escaped mach lookup");
     }
 }

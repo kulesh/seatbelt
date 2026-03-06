@@ -242,7 +242,14 @@ When no `--profile` or `--preset` flag is given, `seatbelt` resolves a profile a
 2. `./.seatbelt.yaml` — hidden variant
 3. `$XDG_CONFIG_HOME/seatbelt/profile.yaml` — user global default (typically `~/.config/seatbelt/profile.yaml`)
 
-If none of these exist, `seatbelt` exits with a clear error listing the paths it checked.
+If none of these exist, `seatbelt` bootstraps `~/.config/seatbelt/profile.yaml` with:
+
+```yaml
+version: 1
+name: default
+description: auto-generated global default profile
+extends: ai-agent-networked
+```
 
 This enables the short-form invocation:
 

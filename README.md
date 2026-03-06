@@ -31,7 +31,7 @@ seatbelt run --preset ai-agent-networked -- python3 agent.py
 # See what SBPL gets generated (without running)
 seatbelt run --dry-run --preset ai-agent-strict -- echo hello
 
-# Short form (auto-discovers ./seatbelt.yaml)
+# Short form (auto-discovers local profile, or bootstraps ~/.config/seatbelt/profile.yaml on first run)
 seatbelt -- npm run build
 ```
 
@@ -47,6 +47,13 @@ seatbelt run --profile my-profile.yaml -- python3 script.py
 seatbelt run --verbose --preset read-only -- ls /tmp    # stream violations in real time
 seatbelt run --explain --preset ai-agent-strict -- make  # explain violations after exit
 ```
+
+Default profile behavior when neither `--profile` nor `--preset` is provided:
+1. `./seatbelt.yaml`
+2. `./.seatbelt.yaml`
+3. `$XDG_CONFIG_HOME/seatbelt/profile.yaml` (fallback `~/.config/seatbelt/profile.yaml`)
+
+If no file exists, `seatbelt` auto-creates the global profile at `~/.config/seatbelt/profile.yaml` extending `ai-agent-networked`.
 
 ### `seatbelt check`
 

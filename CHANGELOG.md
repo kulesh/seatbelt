@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2026-03-06
+
+### Changed
+
+- `run`/external command flows now auto-bootstrap a global default profile at `~/.config/seatbelt/profile.yaml` (via `XDG_CONFIG_HOME`) when no profile is found; generated profile extends `ai-agent-networked`
+- Preset inheritance (`extends`) now resolves transitively and detects cycles with explicit errors
+- Violation collection now matches modern macOS Sandbox log formats and filters by PID post-parse for both streaming and post-run queries
+- Generated SBPL now escapes all user-derived string literals safely (`subpath`, `literal`, `regex`, `global-name`) to prevent malformed policy output
+- `generate` observation mode now validates PID/log-query execution paths and reports log command failures explicitly
+
 ## [0.1.2] - 2026-03-06
 
 ### Changed
