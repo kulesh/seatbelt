@@ -5,6 +5,7 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
 description = "macOS CLI that makes sandbox-exec usable by humans"
 
 [package.metadata.dist]
