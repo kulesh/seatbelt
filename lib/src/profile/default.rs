@@ -1,4 +1,7 @@
+use std::fs::OpenOptions;
+use std::io::{Error, ErrorKind, Write};
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::error::Result;
 use crate::error::SeatbeltError;
@@ -31,13 +34,11 @@ pub fn find_or_bootstrap_default_profile() -> Result<(PathBuf, bool)> {
 
 /// Return the ordered list of candidate paths for default profile resolution.
 pub fn default_profile_candidates(cwd: &Path) -> Vec<PathBuf> {
-    let candidates = vec![
+    vec![
         cwd.join("seatbelt.yaml"),
         cwd.join(".seatbelt.yaml"),
         global_default_profile_path(),
-    ];
-
-    candidates
+    ]
 }
 
 fn global_default_profile_path() -> PathBuf {
@@ -52,13 +53,29 @@ fn global_default_profile_path() -> PathBuf {
 }
 
 fn bootstrap_profile_at(path: &Path) -> Result<bool> {
-    if path.exists() {
-        return Ok(false);
+    match std::fs::symlink_metadata(path) {
+        Ok(meta) => {
+            if meta.file_type().is_symlink() {
+                return Err(Error::new(
+                    ErrorKind::PermissionDenied,
+                    format!(
+                        "refusing to write bootstrap profile to symlink: {}",
+                        path.display()
+                    ),
+                )
+                .into());
+            }
+            return Ok(false);
+        }
+        Err(e) if e.kind() == ErrorKind::NotFound => {}
+        Err(e) => return Err(e.into()),
     }
+
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(path, bootstrap_profile_contents())?;
+
+    write_bytes_atomically(path, bootstrap_profile_contents().as_bytes())?;
     Ok(true)
 }
 
@@ -66,6 +83,54 @@ fn bootstrap_profile_contents() -> String {
     format!(
         "version: 1\nname: default\ndescription: auto-generated global default profile\nextends: {BOOTSTRAP_PRESET}\n"
     )
+}
+
+fn write_bytes_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let parent = path.parent().ok_or_else(|| {
+        Error::new(
+            ErrorKind::InvalidInput,
+            format!("cannot determine parent for {}", path.display()),
+        )
+    })?;
+
+    let file_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("profile");
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let tmp_path = parent.join(format!(".{file_name}.tmp-{}-{nanos}", std::process::id()));
+
+    let mut opts = OpenOptions::new();
+    opts.create_new(true).write(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+
+    let mut file = opts.open(&tmp_path)?;
+    file.write_all(bytes)?;
+    file.sync_all()?;
+
+    if let Ok(meta) = std::fs::symlink_metadata(path) {
+        if meta.file_type().is_symlink() {
+            let _ = std::fs::remove_file(&tmp_path);
+            return Err(Error::new(
+                ErrorKind::PermissionDenied,
+                format!("refusing to overwrite symlink: {}", path.display()),
+            ));
+        }
+    }
+
+    if let Err(e) = std::fs::rename(&tmp_path, path) {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(e);
+    }
+
+    Ok(())
 }
 
 /// Construct an actionable error message listing all paths that were checked.
@@ -143,5 +208,21 @@ mod tests {
         let path = dir.path().join("seatbelt/profile.yaml");
         assert!(bootstrap_profile_at(&path).unwrap());
         assert!(!bootstrap_profile_at(&path).unwrap());
+    }
+
+    #[test]
+    fn bootstrap_profile_rejects_symlink_target() {
+        use std::os::unix::fs::symlink;
+
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("real-profile.yaml");
+        let path = dir.path().join("seatbelt/profile.yaml");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&real, "original").unwrap();
+        symlink(&real, &path).unwrap();
+
+        let err = bootstrap_profile_at(&path).unwrap_err();
+        assert!(err.to_string().contains("symlink"));
+        assert_eq!(std::fs::read_to_string(&real).unwrap(), "original");
     }
 }

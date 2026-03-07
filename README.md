@@ -64,7 +64,7 @@ seatbelt check my-profile.yaml
 seatbelt check --strict my-profile.yaml  # treat warnings as errors
 ```
 
-Six lint rules: version validation, allow_domains consistency, write path safety, unrestricted network warning, missing exec permissions, unnamed profiles.
+Six lint rules: version validation, allow_domains unsupported in v1, write path safety, unrestricted network warning, missing exec permissions, unnamed profiles.
 
 ### `seatbelt explain`
 

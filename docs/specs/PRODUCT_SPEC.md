@@ -178,10 +178,9 @@ filesystem:
 network:
   outbound:
     allow: true
-    # optional domain filter (implemented via proxy)
-    allow_domains:
-      - api.anthropic.com
-      - pypi.org
+    # v1 does not support in-process domain filtering
+    # allow_domains is reserved for future versions and is rejected by lint
+    allow_domains: []
   inbound:
     allow: false
 
@@ -290,4 +289,4 @@ Single static binary. No runtime dependencies. Works on macOS 13 Ventura and lat
 - A developer can go from zero to a working sandbox for Claude Code in under 5 minutes
 - `seatbelt generate` produces a working profile for a standard Python script without manual editing
 - All built-in presets tested and confirmed working on macOS 13, 14, and 15
-- `seatbelt check` catches the five most common SBPL mistakes without false positives
+- `seatbelt check` catches the six most common SBPL mistakes without false positives

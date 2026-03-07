@@ -1,6 +1,7 @@
 use assert_cmd::cargo::cargo_bin_cmd;
 use predicates::prelude::*;
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 
 fn seatbelt() -> assert_cmd::Command {
     cargo_bin_cmd!("seatbelt")
@@ -287,4 +288,77 @@ fn generate_help() {
         .stdout(predicate::str::contains("--base-preset"))
         .stdout(predicate::str::contains("--format"))
         .stdout(predicate::str::contains("--runs"));
+}
+
+fn write_executable_script(path: &std::path::Path, content: &str) {
+    fs::write(path, content).unwrap();
+    let mut perms = fs::metadata(path).unwrap().permissions();
+    perms.set_mode(0o755);
+    fs::set_permissions(path, perms).unwrap();
+}
+
+#[test]
+fn explain_uses_absolute_log_and_date_binaries() {
+    let temp = tempfile::tempdir().unwrap();
+    let fake_bin = temp.path().join("bin");
+    fs::create_dir_all(&fake_bin).unwrap();
+
+    let marker = temp.path().join("path-hijack-marker");
+    let fake_log = format!(
+        "#!/bin/sh\necho hijacked-log > \"{}\"\nexit 0\n",
+        marker.display()
+    );
+    let fake_date = format!(
+        "#!/bin/sh\necho hijacked-date > \"{}\"\nprintf '2026-03-06 00:00:00\\n'\n",
+        marker.display()
+    );
+
+    write_executable_script(&fake_bin.join("log"), &fake_log);
+    write_executable_script(&fake_bin.join("date"), &fake_date);
+
+    let current_path = std::env::var("PATH").unwrap_or_default();
+    let poisoned_path = format!("{}:{}", fake_bin.display(), current_path);
+
+    // If PATH lookup is used, one of the fake binaries will create the marker file.
+    let _ = seatbelt()
+        .args(["explain", "--pid", "123"])
+        .env("PATH", poisoned_path)
+        .assert();
+
+    assert!(
+        !marker.exists(),
+        "expected absolute helper binary paths; PATH-hijack marker was created"
+    );
+}
+
+#[test]
+fn check_rejects_allow_domains() {
+    let profile = write_temp_profile(
+        "version: 1\nname: bad-network\nnetwork:\n  outbound:\n    allow: true\n    allow_domains:\n      - example.com\nprocess:\n  allow_exec_any: true\n",
+    );
+    seatbelt()
+        .args(["check", &profile.path().to_string_lossy()])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("allow_domains is not supported"));
+}
+
+#[test]
+fn run_aborts_on_allow_domains_error() {
+    let profile = write_temp_profile(
+        "version: 1\nname: bad-network\nnetwork:\n  outbound:\n    allow: true\n    allow_domains:\n      - example.com\nprocess:\n  allow_exec_any: true\n",
+    );
+    seatbelt()
+        .args([
+            "run",
+            "--dry-run",
+            "--profile",
+            &profile.path().to_string_lossy(),
+            "--",
+            "echo",
+            "hi",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("allow_domains is not supported"));
 }

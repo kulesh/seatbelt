@@ -216,3 +216,11 @@ When adding/changing presets or schema fields:
 - Observation-mode event collection and parsing: `bin/src/generator.rs`
 - Acceptance coverage for bootstrap behavior: `bin/tests/integration.rs`
 - User-facing command/docs alignment: `README.md`, `docs/specs/PRODUCT_SPEC.md`, `CHANGELOG.md`
+
+### 2026-03-06 23:05:00 EST
+
+- Runtime helper binary hardening (`/usr/bin/log`, `/bin/date`): `lib/src/log_stream.rs`, `bin/src/generator.rs`, `bin/src/runner.rs`
+- Last-run cache write hardening (symlink rejection + atomic writes): `bin/src/runner.rs`, `lib/src/profile/default.rs`
+- Lint policy update for unsupported domain filtering in v1: `lib/src/profile/linter.rs`, `bin/tests/integration.rs`
+- Terminal output sanitization for violation-derived text: `bin/src/runner.rs`
+- Docs and release-note alignment for v1 domain-filter stance and security fixes: `README.md`, `docs/specs/PRODUCT_SPEC.md`, `docs/plans/IMPLEMENTATION_SPEC.md`, `CHANGELOG.md`

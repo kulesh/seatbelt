@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2026-03-06
+
+### Changed
+
+- Hardened helper process execution by using absolute binary paths for `/usr/bin/log` and `/bin/date` to prevent `PATH` hijacking in runtime, explain, and generate flows
+- Hardened default and cache profile persistence with symlink rejection plus atomic write-and-rename behavior
+- `run --explain` now preserves the child process exit code even if postmortem explanation collection fails (best-effort warning only)
+- Terminal output now sanitizes control characters from violation-derived text before printing
+- `allow_domains` is now fail-closed in v1: lint emits an error and `check`/`run` reject profiles that set it
+
 ## [0.1.3] - 2026-03-06
 
 ### Changed

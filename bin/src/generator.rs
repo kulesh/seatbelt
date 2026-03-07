@@ -10,6 +10,9 @@ use seatbelt_lib::sbpl::ops::{classify_operation, OperationKind};
 
 use crate::cli::GenerateArgs;
 
+const LOG_BINARY: &str = "/usr/bin/log";
+const DATE_BINARY: &str = "/bin/date";
+
 /// Observed access patterns from running a process under a report-all sandbox.
 #[derive(Debug, Default)]
 struct Observations {
@@ -177,7 +180,7 @@ async fn observe_process(command: &[String], runs: u32) -> Result<Observations> 
 
 fn query_reported_events(pid: u32, start_time: &str) -> Result<Vec<ObservedEvent>> {
     let predicate = "eventMessage CONTAINS \"Sandbox\"";
-    let output = std::process::Command::new("log")
+    let output = std::process::Command::new(LOG_BINARY)
         .args([
             "show",
             "--predicate",
@@ -462,7 +465,7 @@ fn is_blocklisted(path: &str) -> bool {
 /// Format current time as ISO 8601 for `log show --start`.
 fn format_iso8601_now() -> String {
     // `log show --start` expects local wall-clock time in this format.
-    if let Ok(output) = std::process::Command::new("date")
+    if let Ok(output) = std::process::Command::new(DATE_BINARY)
         .args(["+%Y-%m-%d %H:%M:%S"])
         .output()
     {

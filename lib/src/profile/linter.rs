@@ -35,12 +35,15 @@ pub fn lint(profile: &Profile) -> Vec<LintDiagnostic> {
         });
     }
 
-    // Rule 2: allow_domains without outbound allow
-    if !profile.network.outbound.allow_domains.is_empty() && !profile.network.outbound.allow {
+    // Rule 2: allow_domains is reserved for future proxy integrations.
+    if !profile.network.outbound.allow_domains.is_empty() {
         diags.push(LintDiagnostic {
             severity: Severity::Error,
-            message: "allow_domains specified but outbound network is not allowed".into(),
-            suggestion: Some("set `network.outbound.allow: true` or remove allow_domains".into()),
+            message: "allow_domains is not supported in v1".into(),
+            suggestion: Some(
+                "remove allow_domains, or enforce domain restrictions with an external proxy"
+                    .into(),
+            ),
         });
     }
 
@@ -58,11 +61,14 @@ pub fn lint(profile: &Profile) -> Vec<LintDiagnostic> {
     }
 
     // Rule 4: unrestricted outbound network
-    if profile.network.outbound.allow && profile.network.outbound.allow_domains.is_empty() {
+    if profile.network.outbound.allow {
         diags.push(LintDiagnostic {
             severity: Severity::Warning,
             message: "unrestricted outbound network access".into(),
-            suggestion: Some("consider limiting with allow_domains or disabling outbound".into()),
+            suggestion: Some(
+                "consider disabling outbound, or enforce domain limits via an external proxy"
+                    .into(),
+            ),
         });
     }
 
@@ -137,14 +143,14 @@ process:
     }
 
     #[test]
-    fn rule_allow_domains_without_outbound() {
+    fn rule_allow_domains_unsupported() {
         let p: Profile = serde_yaml::from_str(
             r#"
 version: 1
 name: test
 network:
   outbound:
-    allow: false
+    allow: true
     allow_domains:
       - example.com
 process:
@@ -153,9 +159,8 @@ process:
         )
         .unwrap();
         let diags = lint(&p);
-        assert!(diags
-            .iter()
-            .any(|d| d.severity == Severity::Error && d.message.contains("allow_domains")));
+        assert!(diags.iter().any(|d| d.severity == Severity::Error
+            && d.message.contains("allow_domains is not supported")));
     }
 
     #[test]

@@ -1,5 +1,7 @@
 use crate::error::{Result, SeatbeltError};
 
+const LOG_BINARY: &str = "/usr/bin/log";
+
 /// A parsed sandbox violation from macOS system log output.
 #[derive(Debug, Clone)]
 pub struct Violation {
@@ -65,7 +67,7 @@ pub fn parse_violation_line(line: &str) -> Option<Violation> {
 /// and then filters parsed violations by the target PID.
 pub fn query_violations(pid: u32, start_time: &str) -> Result<Vec<Violation>> {
     let predicate = "eventMessage CONTAINS \"Sandbox\"";
-    let output = std::process::Command::new("log")
+    let output = std::process::Command::new(LOG_BINARY)
         .args([
             "show",
             "--predicate",
@@ -98,7 +100,7 @@ pub fn stream_violations(
 
     let predicate = "eventMessage CONTAINS \"Sandbox\"";
 
-    let child = tokio::process::Command::new("log")
+    let child = tokio::process::Command::new(LOG_BINARY)
         .args(["stream", "--predicate", predicate, "--style", "compact"])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())

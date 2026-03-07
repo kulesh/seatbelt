@@ -1,5 +1,7 @@
+use std::fs::OpenOptions;
+use std::io::{Error, ErrorKind, Write};
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{bail, Context, Result};
 use colored::Colorize;
@@ -12,6 +14,8 @@ use seatbelt_lib::sbpl::ops::{classify_operation, OperationKind};
 use tokio_stream::StreamExt;
 
 use crate::cli::RunArgs;
+
+const DATE_BINARY: &str = "/bin/date";
 
 /// Persisted metadata from the last `seatbelt run` invocation.
 /// Used by `seatbelt explain` when no --pid or --log is given.
@@ -108,7 +112,7 @@ pub async fn run(args: &RunArgs) -> Result<()> {
                         OperationKind::ProcessExec => "exec".blue(),
                         _ => "sys".dimmed(),
                     };
-                    eprintln!("[{prefix}] {} {}", v.operation, v.path);
+                    eprintln!("[{prefix}] {} {}", sanitize_terminal_text(&v.operation), sanitize_terminal_text(&v.path));
                 }
                 result = &mut child_handle => {
                     let status = result.context("child task panicked")?
@@ -123,14 +127,18 @@ pub async fn run(args: &RunArgs) -> Result<()> {
                             OperationKind::ProcessExec => "exec".blue(),
                             _ => "sys".dimmed(),
                         };
-                        eprintln!("[{prefix}] {} {}", v.operation, v.path);
+                        eprintln!("[{prefix}] {} {}", sanitize_terminal_text(&v.operation), sanitize_terminal_text(&v.path));
                     }
 
+                    let mut exit_code = status.code().unwrap_or(1);
                     if args.explain {
-                        print_post_mortem_explanations(pid, &start_time, false)?;
+                        exit_code = finalize_exit_code_after_explain(
+                            exit_code,
+                            print_post_mortem_explanations(pid, &start_time, false),
+                        );
                     }
 
-                    std::process::exit(status.code().unwrap_or(1));
+                    std::process::exit(exit_code);
                 }
             }
         }
@@ -140,11 +148,15 @@ pub async fn run(args: &RunArgs) -> Result<()> {
             .await
             .context("failed to wait on sandbox-exec")?;
 
+        let mut exit_code = status.code().unwrap_or(1);
         if args.explain {
-            print_post_mortem_explanations(pid, &start_time, false)?;
+            exit_code = finalize_exit_code_after_explain(
+                exit_code,
+                print_post_mortem_explanations(pid, &start_time, false),
+            );
         }
 
-        std::process::exit(status.code().unwrap_or(1));
+        std::process::exit(exit_code);
     }
 }
 
@@ -168,6 +180,31 @@ pub async fn run_external(args: &[String]) -> Result<()> {
         command: args.to_vec(),
     };
     run(&run_args).await
+}
+
+fn sanitize_terminal_text(input: &str) -> String {
+    input
+        .chars()
+        .map(|ch| {
+            if matches!(ch, '\n' | '\r' | '\t') {
+                ' '
+            } else if ch.is_control() {
+                '?'
+            } else {
+                ch
+            }
+        })
+        .collect()
+}
+
+fn finalize_exit_code_after_explain(exit_code: i32, explain_result: Result<()>) -> i32 {
+    if let Err(err) = explain_result {
+        eprintln!(
+            "{} failed to explain sandbox violations: {err:#}",
+            "warning:".yellow().bold()
+        );
+    }
+    exit_code
 }
 
 /// Print explanations for violations from a completed run.
@@ -198,10 +235,17 @@ fn print_post_mortem_explanations(pid: u32, start_time: &str, show_all: bool) ->
 
     for v in &filtered {
         let explanation = explainer::explain_violation(v);
-        eprintln!("  {} {}", "●".red(), explanation.headline.bold());
-        eprintln!("    {}", explanation.context.dimmed());
+        eprintln!(
+            "  {} {}",
+            "●".red(),
+            sanitize_terminal_text(&explanation.headline).bold()
+        );
+        eprintln!(
+            "    {}",
+            sanitize_terminal_text(&explanation.context).dimmed()
+        );
         if let Some(ref fix) = explanation.yaml_fix {
-            eprintln!("    {} {fix}", "fix:".green());
+            eprintln!("    {} {}", "fix:".green(), sanitize_terminal_text(fix));
         }
         eprintln!();
     }
@@ -220,12 +264,90 @@ fn load_last_run() -> Result<LastRun> {
 }
 
 fn persist_last_run(last_run: &LastRun) {
-    let path = last_run_path();
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
+    if let Err(err) = write_last_run_file(last_run) {
+        eprintln!(
+            "{} failed to persist last-run cache: {err:#}",
+            "warning:".yellow().bold()
+        );
     }
-    let json = serde_json::to_string(last_run).unwrap_or_default();
-    let _ = std::fs::write(&path, json);
+}
+
+fn write_last_run_file(last_run: &LastRun) -> Result<()> {
+    write_last_run_file_at(&last_run_path(), last_run)
+}
+
+fn write_last_run_file_at(path: &Path, last_run: &LastRun) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create cache directory {}", parent.display()))?;
+    }
+
+    reject_symlink_target(path)?;
+
+    let json = serde_json::to_vec(last_run).context("failed to serialize last-run metadata")?;
+    write_bytes_atomically(path, &json)
+        .with_context(|| format!("failed to persist {}", path.display()))?;
+    Ok(())
+}
+
+fn reject_symlink_target(path: &Path) -> Result<()> {
+    match std::fs::symlink_metadata(path) {
+        Ok(meta) if meta.file_type().is_symlink() => bail!(
+            "refusing to write cache file to symlink destination: {}",
+            path.display()
+        ),
+        Ok(_) => Ok(()),
+        Err(e) if e.kind() == ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e).with_context(|| format!("failed to inspect {}", path.display())),
+    }
+}
+
+fn write_bytes_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let parent = path.parent().ok_or_else(|| {
+        Error::new(
+            ErrorKind::InvalidInput,
+            format!("cannot determine parent for {}", path.display()),
+        )
+    })?;
+
+    let file_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("last-run.json");
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let tmp_path = parent.join(format!(".{file_name}.tmp-{}-{nanos}", std::process::id()));
+
+    let mut opts = OpenOptions::new();
+    opts.create_new(true).write(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+
+    let mut file = opts.open(&tmp_path)?;
+    file.write_all(bytes)?;
+    file.sync_all()?;
+
+    if let Ok(meta) = std::fs::symlink_metadata(path) {
+        if meta.file_type().is_symlink() {
+            let _ = std::fs::remove_file(&tmp_path);
+            return Err(Error::new(
+                ErrorKind::PermissionDenied,
+                format!("refusing to overwrite symlink: {}", path.display()),
+            ));
+        }
+    }
+
+    if let Err(e) = std::fs::rename(&tmp_path, path) {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(e);
+    }
+
+    Ok(())
 }
 
 fn last_run_path() -> PathBuf {
@@ -289,7 +411,7 @@ fn format_iso8601(time: SystemTime) -> String {
 
     // `log show --start` expects local wall-clock time.
     // Try BSD date (macOS): date -r <epoch>, then GNU date fallback: date -d @<epoch>.
-    if let Ok(output) = std::process::Command::new("date")
+    if let Ok(output) = std::process::Command::new(DATE_BINARY)
         .args(["-r", &secs, "+%Y-%m-%d %H:%M:%S"])
         .output()
     {
@@ -300,7 +422,7 @@ fn format_iso8601(time: SystemTime) -> String {
             }
         }
     }
-    if let Ok(output) = std::process::Command::new("date")
+    if let Ok(output) = std::process::Command::new(DATE_BINARY)
         .args(["-d", &format!("@{secs}"), "+%Y-%m-%d %H:%M:%S"])
         .output()
     {
@@ -374,10 +496,17 @@ pub fn explain_from_log(path: &Path, show_all: bool) -> Result<()> {
 
     for v in &filtered {
         let explanation = explainer::explain_violation(v);
-        eprintln!("  {} {}", "●".red(), explanation.headline.bold());
-        eprintln!("    {}", explanation.context.dimmed());
+        eprintln!(
+            "  {} {}",
+            "●".red(),
+            sanitize_terminal_text(&explanation.headline).bold()
+        );
+        eprintln!(
+            "    {}",
+            sanitize_terminal_text(&explanation.context).dimmed()
+        );
         if let Some(ref fix) = explanation.yaml_fix {
-            eprintln!("    {} {fix}", "fix:".green());
+            eprintln!("    {} {}", "fix:".green(), sanitize_terminal_text(fix));
         }
         eprintln!();
     }
@@ -401,7 +530,7 @@ pub fn explain_last_run(show_all: bool) -> Result<()> {
     let last_run = load_last_run()?;
     eprintln!(
         "Explaining violations for: {}",
-        last_run.command.join(" ").bold()
+        sanitize_terminal_text(&last_run.command.join(" ")).bold()
     );
     print_post_mortem_explanations(last_run.pid, &last_run.start_time, show_all)
 }
@@ -413,7 +542,7 @@ mod tests {
     fn expected_date_format_for_epoch(epoch: u64) -> Option<String> {
         let epoch_str = epoch.to_string();
 
-        if let Ok(output) = std::process::Command::new("date")
+        if let Ok(output) = std::process::Command::new(DATE_BINARY)
             .args(["-r", &epoch_str, "+%Y-%m-%d %H:%M:%S"])
             .output()
         {
@@ -425,7 +554,7 @@ mod tests {
             }
         }
 
-        if let Ok(output) = std::process::Command::new("date")
+        if let Ok(output) = std::process::Command::new(DATE_BINARY)
             .args(["-d", &format!("@{epoch_str}"), "+%Y-%m-%d %H:%M:%S"])
             .output()
         {
@@ -438,6 +567,29 @@ mod tests {
         }
 
         None
+    }
+
+    #[test]
+    fn sanitize_terminal_text_replaces_control_chars() {
+        let input = "alpha\x1b[31m\tbeta\n\rgamma\x07";
+        assert_eq!(sanitize_terminal_text(input), "alpha?[31m beta  gamma?");
+    }
+
+    #[test]
+    fn sanitize_terminal_text_preserves_printable_text() {
+        let input = "/Users/test/project/file.txt";
+        assert_eq!(sanitize_terminal_text(input), input);
+    }
+
+    #[test]
+    fn finalize_exit_code_after_explain_preserves_status_on_success() {
+        assert_eq!(finalize_exit_code_after_explain(7, Ok(())), 7);
+    }
+
+    #[test]
+    fn finalize_exit_code_after_explain_preserves_status_on_error() {
+        let explain_result: Result<()> = Err(anyhow::anyhow!("log query failed"));
+        assert_eq!(finalize_exit_code_after_explain(9, explain_result), 9);
     }
 
     #[test]
@@ -488,5 +640,47 @@ mod tests {
     fn last_run_path_is_deterministic() {
         let path = last_run_path();
         assert!(path.ends_with("seatbelt/last-run.json"));
+    }
+
+    #[test]
+    fn write_last_run_file_at_writes_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("seatbelt/last-run.json");
+        let last_run = LastRun {
+            pid: 42,
+            start_time: "2026-03-06 12:34:56".to_string(),
+            command: vec!["echo".to_string(), "hello".to_string()],
+        };
+
+        write_last_run_file_at(&path, &last_run).unwrap();
+
+        let saved = std::fs::read_to_string(path).unwrap();
+        let decoded: LastRun = serde_json::from_str(&saved).unwrap();
+        assert_eq!(decoded.pid, 42);
+        assert_eq!(decoded.command, vec!["echo", "hello"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_last_run_file_at_rejects_symlink_target() {
+        use std::os::unix::fs::symlink;
+
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("real-last-run.json");
+        std::fs::write(&real, "safe").unwrap();
+
+        let cache_path = dir.path().join("seatbelt/last-run.json");
+        std::fs::create_dir_all(cache_path.parent().unwrap()).unwrap();
+        symlink(&real, &cache_path).unwrap();
+
+        let last_run = LastRun {
+            pid: 7,
+            start_time: "2026-03-06 00:00:00".to_string(),
+            command: vec!["true".to_string()],
+        };
+
+        let err = write_last_run_file_at(&cache_path, &last_run).unwrap_err();
+        assert!(err.to_string().contains("symlink"));
+        assert_eq!(std::fs::read_to_string(&real).unwrap(), "safe");
     }
 }

@@ -798,21 +798,21 @@ pub fn lint(profile: &Profile) -> Vec<LintDiagnostic> {
         }
     }
 
-    // WARNING: outbound network allowed but no domain filter
-    if profile.network.outbound.allow && profile.network.outbound.allow_domains.is_empty() {
+    // WARNING: outbound network allowed without proxy-level domain controls
+    if profile.network.outbound.allow {
         diags.push(LintDiagnostic {
             severity: Severity::Warning,
             message: "Outbound network is unrestricted".to_string(),
-            suggestion: Some("Consider using allow_domains to restrict outbound connections".to_string()),
+            suggestion: Some("If you need domain restrictions, route traffic through an external proxy".to_string()),
         });
     }
 
-    // ERROR: allow_domains requires outbound.allow = true
-    if !profile.network.outbound.allow_domains.is_empty() && !profile.network.outbound.allow {
+    // ERROR: allow_domains is reserved and not supported in v1
+    if !profile.network.outbound.allow_domains.is_empty() {
         diags.push(LintDiagnostic {
             severity: Severity::Error,
-            message: "allow_domains has no effect when outbound.allow is false".to_string(),
-            suggestion: Some("Set `outbound: allow: true`".to_string()),
+            message: "allow_domains is not supported in v1".to_string(),
+            suggestion: Some("Use outbound.allow as a coarse switch; enforce domain limits via an external proxy".to_string()),
         });
     }
 
