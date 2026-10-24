@@ -17,21 +17,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
+      - name: Install Rust (from rust-toolchain.toml)
+        uses: actions-rust-lang/setup-rust-toolchain@v2
 
       - name: Build
         run: cargo build --all-targets
@@ -45,10 +32,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
+      - name: Install Rust (from rust-toolchain.toml)
+        uses: actions-rust-lang/setup-rust-toolchain@v2
 
       - name: Run clippy
         run: cargo clippy --all-targets -- -D warnings
@@ -59,10 +44,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
+      - name: Install Rust (from rust-toolchain.toml)
+        uses: actions-rust-lang/setup-rust-toolchain@v2
 
       - name: Check formatting
         run: cargo fmt --all -- --check

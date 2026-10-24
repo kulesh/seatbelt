@@ -2,7 +2,7 @@
 
 ## Language & Toolchain
 
-- **Language:** Rust (stable, current edition 2021)
+- **Language:** Rust (stable, current edition 2021); exact toolchain pinned in `rust-toolchain.toml` (see ADR 0001)
 - **Minimum macOS:** 13 Ventura (required for modern `log stream` predicate format)
 - **Targets:** `aarch64-apple-darwin`, `x86_64-apple-darwin`
 - **Build:** standard `cargo build --release`

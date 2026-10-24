@@ -64,7 +64,7 @@ Rust workspace with two crates:
 - **`lib/`** (`seatbelt-lib`) — Core library. Error types via `thiserror`. No application logic.
 - **`bin/`** (`seatbelt-bin`) — CLI binary (produces `seatbelt` executable). Error handling via `anyhow`. Depends on `seatbelt-lib`.
 
-Toolchain managed by `mise` (see `.mise.toml`). Workspace deps centralized in root `Cargo.toml`.
+Rust toolchain pinned in `rust-toolchain.toml` (read by rustup, mise and CI; bumped weekly by Dependabot, see `docs/adrs/0001-pinned-toolchain-and-dependabot.md`). Workspace deps centralized in root `Cargo.toml`.
 
 ### Module Structure
 

@@ -1,3 +1,4 @@
-[tools]
-rust = "latest"
-
+# The Rust version lives in rust-toolchain.toml. mise reads it from there instead of
+# pinning its own, because a mise-selected version would override the file via RUSTUP_TOOLCHAIN.
+[settings]
+idiomatic_version_file_enable_tools = ["rust"]
