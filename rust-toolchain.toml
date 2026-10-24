@@ -1,6 +1,6 @@
 # Single source of truth for the Rust toolchain used locally, in CI and for releases.
 # Bumped by Dependabot (`rust-toolchain` ecosystem); see docs/adrs/0001-pinned-toolchain-and-dependabot.md.
 [toolchain]
-channel = "1.97.0"
+channel = "1.99.1"
 components = ["clippy", "rustfmt"]
 profile = "minimal"
