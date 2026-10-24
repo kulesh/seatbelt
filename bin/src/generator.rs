@@ -43,28 +43,20 @@ impl Observations {
         let mut obs = Observations::default();
         for event in events {
             match classify_operation(&event.operation) {
+                OperationKind::Network => obs.network_outbound = true,
+                // Every other recorded kind is keyed by its path; a pathless event carries nothing.
+                _ if event.path.is_empty() => {}
                 OperationKind::FileRead => {
-                    if !event.path.is_empty() {
-                        obs.file_reads.insert(event.path.clone());
-                    }
+                    obs.file_reads.insert(event.path.clone());
                 }
                 OperationKind::FileWrite => {
-                    if !event.path.is_empty() {
-                        obs.file_writes.insert(event.path.clone());
-                    }
-                }
-                OperationKind::Network => {
-                    obs.network_outbound = true;
+                    obs.file_writes.insert(event.path.clone());
                 }
                 OperationKind::ProcessExec => {
-                    if !event.path.is_empty() {
-                        obs.process_execs.insert(event.path.clone());
-                    }
+                    obs.process_execs.insert(event.path.clone());
                 }
                 OperationKind::MachLookup => {
-                    if !event.path.is_empty() {
-                        obs.mach_lookups.insert(event.path.clone());
-                    }
+                    obs.mach_lookups.insert(event.path.clone());
                 }
                 _ => {}
             }
@@ -219,12 +211,9 @@ fn parse_reported_event_line(line: &str) -> Option<(u32, ObservedEvent)> {
 
     let details = if let Some(pos) = line.find(" allow ") {
         &line[pos + " allow ".len()..]
-    } else if let Some(pos) = line.find("deny(") {
-        let deny_tail = &line[pos..];
-        let after_paren = deny_tail.find(") ")?;
-        &deny_tail[after_paren + 2..]
     } else {
-        return None;
+        let deny_tail = &line[line.find("deny(")?..];
+        &deny_tail[deny_tail.find(") ")? + 2..]
     };
 
     let (operation, path) = match details.find(' ') {
